@@ -1,0 +1,15 @@
+# Carpetas y archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Configuración de Visual Studio Code
+.vscode/
+
+# Acciones de GitHub (opcional: si no quieres subir workflows)
+.github/
+
+# Archivos temporales o de editor
+*.swp
+*.swo
+*~
