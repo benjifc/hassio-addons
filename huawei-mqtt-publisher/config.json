@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "slug": "huawei_mqtt_publisher",
   "description": "Publica datos del inversor Huawei Solar en MQTT usando Modbus TCP.",
+  "url": "https://github.com/benjifc/huawei-mqtt-publisher/tree/main/huawei-mqtt-publisher",
   "arch": ["aarch64", "amd64", "armhf", "armv7"],
   "startup": "application",
   "boot": "auto",
