@@ -1,0 +1,30 @@
+{
+  "name": "Huawei Inverter MQTT Publisher",
+  "version": "1.0.0",
+  "slug": "huawei_mqtt_publisher",
+  "description": "Publica datos del inversor Huawei Solar en MQTT usando Modbus TCP.",
+  "arch": ["aarch64", "amd64", "armhf", "armv7"],
+  "startup": "application",
+  "boot": "auto",
+  "options": {
+    "inverter_ip": "192.168.1.102",
+    "modbus_port": 502,
+    "modbus_slave_id": 1,
+    "mqtt_host": "core-mosquitto",
+    "mqtt_port": 1883,
+    "mqtt_username": "homeassistant",
+    "mqtt_password": ""
+  },
+  "schema": {
+    "inverter_ip": "str",
+    "modbus_port": "int",
+    "modbus_slave_id": "int",
+    "mqtt_host": "str",
+    "mqtt_port": "int",
+    "mqtt_username": "str",
+    "mqtt_password": "password"
+  },
+  "map": [
+    "ssl"
+  ]
+}
