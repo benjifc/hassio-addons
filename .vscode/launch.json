@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/.venv/bin/python",  // Usa el intérprete del entorno virtual (.venv)
+            "justMyCode": true,  // Cambia a false si necesitas depurar librerías externas
+            "env": {  // Variables de entorno para el script (ajusta los valores según tu setup)
+                "INVERTER_IP": "192.168.1.102",
+                "MQTT_HOST": "192.168.1.163",
+                "MQTT_USERNAME": "kmosquito",
+                "MQTT_PASSWORD": "V.ii5LPyJ3$J~TE1ohyi&DXyXD"  // Agrega la contraseña si es necesaria
+            }
+        }
+    ]
+}
