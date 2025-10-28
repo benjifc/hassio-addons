@@ -1,0 +1,8 @@
+{
+  "name": "Kexpiral Add-ons",
+  "url": "https://github.com/tu-usuario/kexpiral-hassio-addons",
+  "maintainer": "Benjamin F. C.",
+  "description": "Repositorio de add-ons personalizados de Kexpiral para Home Assistant.",
+  "addons": ["huawei-mqtt-publisher"]
+  
+}   
