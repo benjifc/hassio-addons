@@ -14,8 +14,8 @@ LABEL io.hass.arch="${BUILD_ARCH}" \
       io.hass.url="https://github.com/benjifc/hassio-addons"
 
 # ---- Dependencias del sistema ----
-# (jq para leer /data/options.json; no instales bashio)
-RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers jq bash
+# jq se usa para leer /data/options.json; no instales bashio.
+RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers jq
 
 # ---- Entorno virtual Python ----
 RUN python3 -m venv /opt/venv \
@@ -24,21 +24,22 @@ RUN python3 -m venv /opt/venv \
 # ---- Librerías necesarias ----
 RUN /opt/venv/bin/pip install "paho-mqtt>=2.1.0" "huawei-solar>=2.4.0"
 
+# ---- Variables de entorno ----
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# ---- Copiar aplicación ----
+# ---- Copiar aplicación Python ----
 COPY huawei_mqtt.py /app/huawei_mqtt.py
 
 # ---- Servicio s6: leer opciones con jq y exportarlas ----
 RUN mkdir -p /etc/services.d/huawei-mqtt && \
 cat > /etc/services.d/huawei-mqtt/run <<'EOF'
-#!/usr/bin/with-contenv sh
+#!/usr/bin/with-contenv /bin/sh
 set -eu
 
 OPTS=/data/options.json
 val(){ jq -r ".${1} // empty" "$OPTS"; }
 
-# Recojo config y la exporto
+# Exportar configuración
 export INVERTER_IP="$(val inverter_ip)"
 export MQTT_HOST="$(val mqtt_host)"
 export MQTT_USERNAME="$(val mqtt_username)"
@@ -49,7 +50,7 @@ export MODBUS_PORT="$(val modbus_port)"
 export MQTT_QOS="$(val mqtt_qos)"
 export MQTT_CLIENT_ID="$(val mqtt_client_id)"
 
-# Opcionales
+# Campos opcionales
 PROTO="$(val mqtt_protocol)"
 TLS="$(val mqtt_tls)"
 KA="$(val mqtt_keepalive)"
@@ -57,7 +58,9 @@ KA="$(val mqtt_keepalive)"
 [ -n "$TLS" ] && export MQTT_TLS="$TLS"
 [ -n "$KA" ] && export MQTT_KEEPALIVE="$KA"
 
+# Ejecutar servicio principal
 exec /opt/venv/bin/python -u /app/huawei_mqtt.py
 EOF
 
-RUN chmod +x /etc/services.d/huawei-mqtt/run
+# 🔧 Asegurar formato LF (sin \r) y permisos
+RUN sed -i 's/\r$//' /etc/services.d/huawei-mqtt/run && chmod +x /etc/services.d/huawei-mqtt/run

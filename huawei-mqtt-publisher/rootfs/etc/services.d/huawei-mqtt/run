@@ -1,13 +1,14 @@
-#!/usr/bin/with-contenv bash
-set -e
+#!/usr/bin/with-contenv /bin/sh
+set -eu
 
-# Archivo de configuración del Add-on
 OPTS="/data/options.json"
 
-# Función auxiliar: lee el valor o devuelve vacío
-val() { jq -r ".$1 // empty" "$OPTS"; }
+# Función auxiliar para leer valores del config.json
+val() {
+  jq -r ".${1} // empty" "$OPTS"
+}
 
-# Exportar todas las variables necesarias
+# Variables requeridas
 export INVERTER_IP="$(val inverter_ip)"
 export MQTT_HOST="$(val mqtt_host)"
 export MQTT_USERNAME="$(val mqtt_username)"
@@ -27,5 +28,7 @@ KEEPALIVE="$(val mqtt_keepalive)"
 [ -n "$TLS" ] && export MQTT_TLS="$TLS"
 [ -n "$KEEPALIVE" ] && export MQTT_KEEPALIVE="$KEEPALIVE"
 
-# Ejecutar tu script Python principal
+echo "[INFO] Starting Huawei Inverter MQTT Publisher..."
+echo "[INFO] Inverter: $INVERTER_IP | MQTT: $MQTT_HOST:$MQTT_PORT (client $MQTT_CLIENT_ID)"
+
 exec /opt/venv/bin/python -u /app/huawei_mqtt.py
