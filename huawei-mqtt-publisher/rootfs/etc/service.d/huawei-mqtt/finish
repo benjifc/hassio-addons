@@ -1,2 +1,2 @@
-#!/usr/bin/with-contenv bashio
-bashio::log.info "Huawei MQTT Publisher detenido."
+#!/usr/bin/execlineb -P
+s6-svscanctl -t /var/run/s6/services
