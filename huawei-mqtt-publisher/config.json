@@ -1,6 +1,6 @@
 {
   "name": "Huawei Inverter MQTT Publisher",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "slug": "huawei_mqtt_publisher",
   "description": "Publica datos del inversor Huawei Solar en MQTT usando Modbus TCP.",
   "url": "https://github.com/benjifc/hassio-addons",
@@ -30,7 +30,7 @@
     "modbus_port": "int",
     "mqtt_host": "str",
     "mqtt_port": "int",
-    "mqtt_username": "password?s",
+    "mqtt_username": "passwords?",
     "mqtt_password": "str?",
     "mqtt_qos": "int",
     "mqtt_client_id": "str",
