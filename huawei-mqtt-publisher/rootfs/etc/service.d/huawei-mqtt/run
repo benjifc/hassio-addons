@@ -1,2 +1,2 @@
 #!/usr/bin/with-contenv sh
-exec /opt/venv/bin/python -u /app/huawei_mqtt_publisher.py
+exec /opt/venv/bin/python -u /app/huawei_mqtt.py
