@@ -254,28 +254,23 @@ async def _modbus_loop(huawei_client, mqtt_client):
 
         try:
             # === LECTURAS BASE ===
-            active_power = (await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value  # W
-            meter_power  = (await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1  # W (+importa / -exporta)
+            active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000  # W
+            meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1 ) / 1000 # kW (+importa / -exporta)
 
             # === SENSORES DERIVADOS ===
 
-            # Consumo casa instantáneo (W)
+            # Consumo casa instantáneo (kW)
             consumo_casa = abs(active_power - meter_power)
 
-            # Importación/exportación (W)
+            # Importación/exportación (kW)
             import_w = max(meter_power, 0)
             export_w = max(-meter_power, 0)
-
-            # Integra a energía (kWh) — aprox cada segundo
-            energia_importada += (import_w / 1000.0 / 3600.0)
-            energia_exportada += (export_w / 1000.0 / 3600.0)
 
             # Publica todos los sensores derivados
             mqtt_client.publish("inversor/Huawei/consumo_casa_w", f"{consumo_casa:.0f}", qos=pub_qos)
             mqtt_client.publish("inversor/Huawei/red_import_w", f"{import_w:.0f}", qos=pub_qos)
             mqtt_client.publish("inversor/Huawei/red_export_w", f"{export_w:.0f}", qos=pub_qos)
-            mqtt_client.publish("inversor/Huawei/energia_importada_kwh", f"{energia_importada:.4f}", qos=pub_qos)
-            mqtt_client.publish("inversor/Huawei/energia_exportada_kwh", f"{energia_exportada:.4f}", qos=pub_qos)
+
 
         except Exception as e:
             log.error("Error en cálculo derivado: %s", e)
