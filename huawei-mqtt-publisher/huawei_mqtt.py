@@ -79,38 +79,32 @@ log.info(
 #     rn.GRID_A_VOLTAGE, rn.ACTIVE_GRID_A_CURRENT, rn.POWER_METER_ACTIVE_POWER,
 #     rn.GRID_C_VOLTAGE, rn.ACTIVE_GRID_C_CURRENT
 # ]
-
 VARS_IMMEDIATE = [
-    # Strings FV
+    # Strings fotovoltaicos
     rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
     rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
-    rn.INPUT_POWER,  # Potencia total de entrada solar
+    rn.INPUT_POWER,  # Potencia total de entrada desde paneles
 
-    # Red eléctrica (salida del inversor)
-    rn.GRID_VOLTAGE, rn.GRID_CURRENT, rn.ACTIVE_POWER,
-    rn.REACTIVE_POWER, rn.APPARENT_POWER,
+    # Red eléctrica
+    rn.GRID_VOLTAGE, rn.GRID_CURRENT,
+    rn.ACTIVE_POWER, rn.REACTIVE_POWER,
+    rn.POWER_FACTOR,
+    rn.GRID_FREQUENCY,
+
+    # Potencias trifásicas (si tu inversor lo soporta)
+    rn.ACTIVE_GRID_A_POWER, rn.ACTIVE_GRID_B_POWER, rn.ACTIVE_GRID_C_POWER,
     rn.GRID_A_VOLTAGE, rn.GRID_B_VOLTAGE, rn.GRID_C_VOLTAGE,
     rn.ACTIVE_GRID_A_CURRENT, rn.ACTIVE_GRID_B_CURRENT, rn.ACTIVE_GRID_C_CURRENT,
 
-    # Contador de red
+    # Contador o meter externo (si tienes)
     rn.POWER_METER_ACTIVE_POWER, rn.POWER_METER_REACTIVE_POWER,
-    rn.POWER_METER_APPARENT_POWER, rn.POWER_METER_POWER_FACTOR,
+    rn.POWER_METER_POWER_FACTOR,
 
-    # Frecuencia y estado instantáneo
-    rn.GRID_FREQUENCY,
-    rn.INVERTER_STATE,   # Estado interno del inversor
-    rn.DEVICE_STATUS,    # Estado textual (On-grid, etc.)
-    rn.OPERATION_MODE,   # Modo de operación (Auto, Manual, etc.)
-
-    # Batería (si hay)
+    # Batería (LUNA2000 o similar)
     rn.STORAGE_CHARGE_DISCHARGE_POWER,
-    rn.STORAGE_CURRENT,
-    rn.STORAGE_VOLTAGE,
-
-    # Temperatura
-    rn.INTERNAL_TEMPERATURE,
-    rn.MPPT_01_TEMPERATURE,
-    rn.MPPT_02_TEMPERATURE,
+    rn.STORAGE_CURRENT_DAY_CHARGE_CAPACITY,
+    rn.STORAGE_CURRENT_DAY_DISCHARGE_CAPACITY,
+    rn.STORAGE_STATE_OF_CAPACITY,  # % de SOC
 ]
 
 
@@ -121,36 +115,23 @@ VARS_IMMEDIATE = [
 #     rn.GRID_EXPORTED_ENERGY, rn.GRID_ACCUMULATED_ENERGY
 #     ]
 VARS_PERIODIC = [
-    rn.DAY_ACTIVE_POWER_PEAK, rn.DAY_REACTIVE_POWER_PEAK,
+    rn.DAY_ACTIVE_POWER_PEAK,
     rn.EFFICIENCY,
-    rn.INTERNAL_TEMPERATURE, rn.INSULATION_RESISTANCE,
-    rn.DEVICE_STATUS, rn.FAULT_CODE,
+    rn.INTERNAL_TEMPERATURE,
+    rn.INSULATION_RESISTANCE,
+    rn.DEVICE_STATUS,
+    rn.FAULT_CODE,
 
-    # Producción acumulada
-    rn.ACCUMULATED_YIELD_ENERGY,
     rn.DAILY_YIELD_ENERGY,
-    rn.TOTAL_REACTIVE_POWER,
+    rn.ACCUMULATED_YIELD_ENERGY,
     rn.GRID_EXPORTED_ENERGY,
     rn.GRID_ACCUMULATED_ENERGY,
 
-    # Potencias acumuladas de red
-    rn.POWER_METER_IMPORT_ACTIVE_ENERGY,
-    rn.POWER_METER_EXPORT_ACTIVE_ENERGY,
-
-    # # Datos batería (si hay)
-    # rn.STORAGE_CHARGED_ENERGY,
-    # rn.STORAGE_DISCHARGED_ENERGY,
-    # rn.STORAGE_TOTAL_CHARGED_ENERGY,
-    # rn.STORAGE_TOTAL_DISCHARGED_ENERGY,
-    # rn.STORAGE_TEMPERATURE,
-    # rn.STORAGE_STATE_OF_CHARGE,
-
-    # Información de firmware / modelo
-    rn.DEVICE_TYPE,
-    rn.MODEL_NAME,
-    rn.SERIAL_NUMBER,
-    rn.FIRMWARE_VERSION,
-    rn.HARDWARE_VERSION,
+    rn.TOTAL_FEED_IN_TO_GRID,
+    rn.TOTAL_SUPPLY_FROM_GRID,
+    rn.YEARLY_YIELD_ENERGY,
+    rn.MONTHLY_YIELD_ENERGY,
+    rn.POWER_FACTOR_BUILT_IN_ENERGY_SENSOR,
 ]
 # --- Señales ---
 shutdown_event = asyncio.Event()
