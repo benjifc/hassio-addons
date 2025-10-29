@@ -14,7 +14,7 @@ RUN python3 -m venv "$VIRTUAL_ENV" \
  && pip install --no-cache-dir huawei-solar paho-mqtt
 
 # Copia tu script a /app (ajusta el nombre si es distinto)
-COPY huawei_mqtt_publisher.py /app/
+COPY huawei_mqtt.py /app/
 
 # Copia s6 services y da permisos (RUTA CORRECTA)
 COPY rootfs/ /

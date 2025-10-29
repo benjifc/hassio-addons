@@ -8,4 +8,4 @@ export PATH="$VIRTUAL_ENV/bin:$PATH"
 # export MQTT_HOST="$(jq -r .mqtt_host /data/options.json)"
 
 # Lanza el publisher
-exec python /app/huawei_mqtt_publisher.py
+exec python /app/huawei_mqtt.py
