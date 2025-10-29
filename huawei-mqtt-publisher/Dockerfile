@@ -1,10 +1,11 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
 FROM $BUILD_FROM
 
-ENV LANG C.UTF-8
+ENV LANG=C.UTF-8
 
-# Copy script
+# Copia el sistema s6
 COPY rootfs /
+RUN chmod +x /etc/services.d/huawei/run /etc/services.d/huawei/finish || true
 
 # Instalar dependencias del sistema
 RUN apk add --no-cache \
@@ -16,12 +17,7 @@ RUN apk add --no-cache \
     linux-headers
 
 # Instalar paquetes Python
-RUN pip3 install --no-cache-dir --break-system-packages huawei-solar paho-mqtt
+RUN pip3 install --no-cache-dir huawei-solar paho-mqtt
 
 # Copiar el script Python
 COPY huawei_mqtt.py /
-
-RUN chmod +x /etc/services.d/huawei/run
-RUN chmod +x /etc/services.d/huawei/finish
-# ¡NO usar CMD! Dejamos que s6 inicie el servicio.
-# El script se ejecutará desde rootfs/etc/services.d/...
