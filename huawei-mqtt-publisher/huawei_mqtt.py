@@ -253,25 +253,23 @@ async def _modbus_loop(huawei_client, mqtt_client):
             continue
 
         try:
-            # === LECTURAS BASE ===
-            active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000  # W
-            meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1 ) / 1000 # kW (+importa / -exporta)
+       # === BASE READINGS ===
+            active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000  # kW
+            meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1) / 1000  # kW (+import / -export)
 
-            # === SENSORES DERIVADOS ===
+            # === DERIVED SENSORS ===
 
-            # Consumo casa instantáneo (kW)
-            consumo_casa = abs(active_power - meter_power)
+            # House instantaneous consumption (kW)
+            house_consumption = abs(active_power - meter_power)
 
-            # Importación/exportación (kW)
-            import_w = max(meter_power, 0)
-            export_w = max(-meter_power, 0)
+            # Import / Export (kW)
+            grid_import = max(meter_power, 0)
+            grid_export = max(-meter_power, 0)
 
-            # Publica todos los sensores derivados
-            mqtt_client.publish("inversor/Huawei/consumo_casa_kW", f"{consumo_casa:.3f}", qos=pub_qos)
-            mqtt_client.publish("inversor/Huawei/red_import_kW", f"{import_w:.3f}", qos=pub_qos)
-            mqtt_client.publish("inversor/Huawei/red_export_KW", f"{export_w:.3f}", qos=pub_qos)
-
-
+            # Publish all derived sensors with 3 decimals
+            mqtt_client.publish("inverter/Huawei/house_consumption", f"{house_consumption:.3f}", qos=pub_qos)
+            mqtt_client.publish("inverter/Huawei/grid_import", f"{grid_import:.3f}", qos=pub_qos)
+            mqtt_client.publish("inverter/Huawei/grid_export", f"{grid_export:.3f}", qos=pub_qos)
         except Exception as e:
             log.error("Error en cálculo derivado: %s", e)
 
