@@ -13,7 +13,7 @@ LABEL io.hass.arch="${BUILD_ARCH}" \
     io.hass.url="https://github.com/benjifc/hassio-addons"
 
 # ---- Dependencias del sistema ----
-RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers bash
+RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers bash bashio jq
 
 # ---- Entorno virtual Python ----
 RUN python3 -m venv /opt/venv \
