@@ -267,9 +267,9 @@ async def _modbus_loop(huawei_client, mqtt_client):
             export_w = max(-meter_power, 0)
 
             # Publica todos los sensores derivados
-            mqtt_client.publish("inversor/Huawei/consumo_casa_kW", f"{consumo_casa:.0f}", qos=pub_qos)
-            mqtt_client.publish("inversor/Huawei/red_import_kW", f"{import_w:.0f}", qos=pub_qos)
-            mqtt_client.publish("inversor/Huawei/red_export_KW", f"{export_w:.0f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/consumo_casa_kW", f"{consumo_casa:.3f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/red_import_kW", f"{import_w:.3f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/red_export_KW", f"{export_w:.3f}", qos=pub_qos)
 
 
         except Exception as e:
