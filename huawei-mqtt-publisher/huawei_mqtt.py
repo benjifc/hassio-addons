@@ -73,12 +73,7 @@ log.info(
 )
 
 # --- Variables a leer ---
-# VARS_IMMEDIATE = [
-#     rn.PV_01_VOLTAGE, rn.PV_01_CURRENT, rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
-#     rn.INPUT_POWER, rn.GRID_VOLTAGE, rn.GRID_CURRENT, rn.ACTIVE_POWER,
-#     rn.GRID_A_VOLTAGE, rn.ACTIVE_GRID_A_CURRENT, rn.POWER_METER_ACTIVE_POWER,
-#     rn.GRID_C_VOLTAGE, rn.ACTIVE_GRID_C_CURRENT
-# ]
+
 VARS_IMMEDIATE = [
     # PV strings
     rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
@@ -98,12 +93,6 @@ VARS_IMMEDIATE = [
 ]
 
 
-# VARS_PERIODIC = [
-#     rn.DAY_ACTIVE_POWER_PEAK, rn.EFFICIENCY, rn.INTERNAL_TEMPERATURE,
-#     rn.INSULATION_RESISTANCE, rn.DEVICE_STATUS, rn.FAULT_CODE,
-#     rn.ACCUMULATED_YIELD_ENERGY, rn.DAILY_YIELD_ENERGY,
-#     rn.GRID_EXPORTED_ENERGY, rn.GRID_ACCUMULATED_ENERGY
-#     ]
 VARS_PERIODIC = [
     # Estado general y diagnósticos
     rn.DEVICE_STATUS,
@@ -254,19 +243,44 @@ async def _connect_huawei_with_retries():
 # --- Bucle principal de publicación ---
 async def _modbus_loop(huawei_client, mqtt_client):
     periodic_ctr = 0
+    energia_importada = 0.0
+    energia_exportada = 0.0
+
     while not shutdown_event.is_set():
         if hasattr(mqtt_client, "is_connected") and not mqtt_client.is_connected():
             log.warning("MQTT not connected, waiting...")
             await asyncio.sleep(1)
             continue
 
-        for key in VARS_IMMEDIATE:
-            try:
-                mid = await huawei_client.get(key, slave_id)
-                mqtt_client.publish(f"inversor/Huawei/{key}", str(mid.value), qos=pub_qos)
-            except Exception as e:
-                log.error("Error reading %s: %s", key, e)
+        try:
+            # === LECTURAS BASE ===
+            active_power = (await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value  # W
+            meter_power  = (await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value  # W (+importa / -exporta)
 
+            # === SENSORES DERIVADOS ===
+
+            # Consumo casa instantáneo (W)
+            consumo_casa = abs(active_power - meter_power)
+
+            # Importación/exportación (W)
+            import_w = max(meter_power, 0)
+            export_w = max(-meter_power, 0)
+
+            # Integra a energía (kWh) — aprox cada segundo
+            energia_importada += (import_w / 1000.0 / 3600.0)
+            energia_exportada += (export_w / 1000.0 / 3600.0)
+
+            # Publica todos los sensores derivados
+            mqtt_client.publish("inversor/Huawei/consumo_casa_w", f"{consumo_casa:.0f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/red_import_w", f"{import_w:.0f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/red_export_w", f"{export_w:.0f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/energia_importada_kwh", f"{energia_importada:.4f}", qos=pub_qos)
+            mqtt_client.publish("inversor/Huawei/energia_exportada_kwh", f"{energia_exportada:.4f}", qos=pub_qos)
+
+        except Exception as e:
+            log.error("Error en cálculo derivado: %s", e)
+
+        # LECTURAS PERIÓDICAS ORIGINALES
         periodic_ctr += 1
         if periodic_ctr > 5:
             for key in VARS_PERIODIC:
@@ -278,7 +292,6 @@ async def _modbus_loop(huawei_client, mqtt_client):
             periodic_ctr = 0
 
         await asyncio.sleep(1)
-
 # --- Ciclo completo ---
 async def _run_once():
     mqtt_client = await _connect_mqtt_with_retries()
