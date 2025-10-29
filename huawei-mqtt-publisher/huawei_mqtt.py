@@ -94,8 +94,7 @@ VARS_IMMEDIATE = [
     rn.POWER_METER_ACTIVE_POWER,
     rn.POWER_METER_REACTIVE_POWER,
 
-    # Carga/consumo doméstico (calculado por el meter)
-    rn.LOAD_POWER,
+
 ]
 
 
