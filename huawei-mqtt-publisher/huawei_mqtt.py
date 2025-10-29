@@ -258,6 +258,9 @@ async def _modbus_loop(huawei_client, mqtt_client):
             meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1) / 1000  # kW (+import / -export)
 
             # === DERIVED SENSORS ===
+            mqtt_client.publish(f"inverter/Huawei/active_power", f"{active_power:.3f}", qos=pub_qos)
+            mqtt_client.publish(f"inverter/Huawei/meter_power_active_power", f"{meter_power:.3f}", qos=pub_qos)
+
 
             # House instantaneous consumption (kW)
             house_consumption = abs(active_power - meter_power)
