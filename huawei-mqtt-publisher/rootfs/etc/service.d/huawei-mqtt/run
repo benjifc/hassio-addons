@@ -1,10 +1,11 @@
 #!/usr/bin/with-contenv sh
-# Usar el venv
+# Fuerza uso del venv
 export VIRTUAL_ENV=/opt/venv
 export PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Opcional: espera de red/variables
-# s6-setuidgid nobody:users  # si quieres bajar privilegios
+# (opcional) exporta variables desde opciones del add-on si las usas
+# e.g., MQTT creds desde /data/options.json con jq (si lo añades)
+# export MQTT_HOST="$(jq -r .mqtt_host /data/options.json)"
 
-# Lanza tu script Python
+# Lanza el publisher
 exec python /app/huawei_mqtt_publisher.py
