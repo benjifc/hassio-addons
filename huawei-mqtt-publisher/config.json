@@ -7,7 +7,7 @@
   "arch": ["aarch64", "amd64"],
   "init": true,
   "startup": "services",
-4  "boot": "auto",
+  "boot": "auto",
   "options": {
     "inverter_ip": "192.168.1.102",
     "modbus_port": 502,
