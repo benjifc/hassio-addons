@@ -1,11 +1,2 @@
 #!/usr/bin/with-contenv sh
-# Fuerza uso del venv
-export VIRTUAL_ENV=/opt/venv
-export PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# (opcional) exporta variables desde opciones del add-on si las usas
-# e.g., MQTT creds desde /data/options.json con jq (si lo añades)
-# export MQTT_HOST="$(jq -r .mqtt_host /data/options.json)"
-
-# Lanza el publisher
-exec python /app/huawei_mqtt.py
+exec /opt/venv/bin/python -u /app/huawei_mqtt_publisher.py

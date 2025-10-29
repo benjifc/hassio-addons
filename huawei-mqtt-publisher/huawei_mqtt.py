@@ -26,6 +26,7 @@ broker_port  = int(os.getenv("MQTT_PORT", 1883))
 slave_id     = int(os.getenv("MODBUS_SLAVE_ID", 1))
 port         = int(os.getenv("MODBUS_PORT", 502))
 pub_qos      = int(os.getenv("MQTT_QOS", 1))
+mqtt_client_id = os.getenv("MQTT_CLIENT_ID", "huawei-mqtt-publisher")
 
 # --- Vars a leer ---
 VARS_IMMEDIATE = [
@@ -56,27 +57,38 @@ USE_V2 = CallbackAPIVersion is not None  # paho >= 2.0
 
 def _mk_client():
     if USE_V2:
-        # API v2: callbacks con reasonCode y properties
+        # MQTT v5 por defecto en paho 2.x
         client = mqtt.Client(
+            client_id=mqtt_client_id,
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            protocol=mqtt.MQTTv311,
+            protocol=mqtt.MQTTv5,
             transport="tcp",
         )
+        # Backoff interno de paho para reconexiones automáticas
+        client.reconnect_delay_set(min_delay=1, max_delay=30)
     else:
-        client = mqtt.Client()  # paho 1.x
+        client = mqtt.Client(client_id=mqtt_client_id)  # paho 1.x (MQTT v3.1.1)
+    client.enable_logger(log)  # integra logs del cliente en nuestro logger
     return client
 
 def _set_mqtt_callbacks(client):
     client.connected_flag = False
 
     if USE_V2:
+        # v2 signatures: (client, userdata, flags, reasonCode, properties)
         def on_connect(client, userdata, flags, reasonCode, properties):
             if int(reasonCode) == 0:
                 client.connected_flag = True
                 log.info("MQTT connected OK (v2), rc=%s", reasonCode)
             else:
                 log.warning("MQTT connect failed (v2), rc=%s", reasonCode)
+
+        def on_disconnect(client, userdata, reasonCode, properties):
+            client.connected_flag = False
+            log.warning("MQTT disconnected (v2), rc=%s", reasonCode)
+
     else:
+        # v1 signatures: (client, userdata, flags, rc)
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 client.connected_flag = True
@@ -84,7 +96,12 @@ def _set_mqtt_callbacks(client):
             else:
                 log.warning("MQTT connect failed (v1), rc=%s", rc)
 
+        def on_disconnect(client, userdata, rc):
+            client.connected_flag = False
+            log.warning("MQTT disconnected (v1), rc=%s", rc)
+
     client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
 
 async def _connect_mqtt_with_retries():
     backoff = 1
@@ -94,19 +111,32 @@ async def _connect_mqtt_with_retries():
     if mqtt_user:
         client.username_pw_set(mqtt_user, mqtt_pass)
 
-    # Usar loop_start para callbacks en hilo propio
+    # Last Will (opcional): marca offline si el contenedor muere
+    try:
+        client.will_set("inversor/Huawei/status", payload="offline", qos=1, retain=True)
+    except Exception:
+        pass
+
     client.loop_start()
 
     while not shutdown_event.is_set():
         try:
-            # connect_async existe en paho 1.6+; en 2.x también. Si falla, usa connect.
             connect_fn = getattr(client, "connect_async", None) or client.connect
             log.info("Connecting MQTT to %s:%d ...", mqtt_host, broker_port)
-            connect_fn(mqtt_host, broker_port, keepalive=60)
+            if USE_V2:
+                # MQTT v5 permite properties; aquí no son necesarios
+                connect_fn(mqtt_host, broker_port, keepalive=60)
+            else:
+                connect_fn(mqtt_host, broker_port, keepalive=60)
 
             # Esperar hasta 30s por conexión
             for _ in range(30):
                 if getattr(client, "connected_flag", False):
+                    # Publica online si quieres un heartbeat retained
+                    try:
+                        client.publish("inversor/Huawei/status", "online", qos=1, retain=True)
+                    except Exception:
+                        pass
                     log.info("MQTT connected")
                     return client
                 await asyncio.sleep(1)
@@ -116,7 +146,7 @@ async def _connect_mqtt_with_retries():
             log.error("MQTT connect error: %s; retrying in %ss", e, backoff)
 
         await asyncio.sleep(backoff)
-        backoff = min(backoff * 2, 60)
+        backoff = min(backoff * 60 // 2, 60) if backoff < 2 else min(backoff * 2, 60)  # acelera a 2 y duplica
 
     # Si nos piden apagar antes de conectar:
     try:
@@ -142,6 +172,12 @@ async def _connect_huawei_with_retries():
 async def _modbus_loop(huawei_client, mqtt_client):
     periodic_ctr = 0
     while not shutdown_event.is_set():
+        # Si el broker se cayó, espera a que paho lo recupere (o que el lazo superior reinicie)
+        if hasattr(mqtt_client, "is_connected") and not mqtt_client.is_connected():
+            log.warning("MQTT not connected, waiting...")
+            await asyncio.sleep(1)
+            continue
+
         # Inmediatas
         for key in VARS_IMMEDIATE:
             try:
@@ -175,7 +211,11 @@ async def _run_once():
         await _modbus_loop(huawei_client, mqtt_client)
     finally:
         try:
-            log.info("Shutting down MQTT loop...")
+            log.info("Publishing offline and shutting down MQTT loop...")
+            try:
+                mqtt_client.publish("inversor/Huawei/status", "offline", qos=1, retain=True)
+            except Exception:
+                pass
             mqtt_client.disconnect()
             mqtt_client.loop_stop()
         except Exception as e:

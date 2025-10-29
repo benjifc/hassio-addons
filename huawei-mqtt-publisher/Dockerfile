@@ -1,21 +1,20 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
+FROM ghcr.io/home-assistant/aarch64-base:latest
 
-# Herramientas base para compilar wheels si hace falta
-RUN apk add --no-cache python3 python3-dev gcc musl-dev linux-headers
+# System deps
+RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers
 
-# Virtualenv en /opt/venv y PATH
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+# Venv para esquivar PEP 668
+RUN python3 -m venv /opt/venv \
+ && /opt/venv/bin/pip install --upgrade pip
 
-# Crear venv e instalar deps dentro del venv (evita PEP 668)
-RUN python3 -m venv "$VIRTUAL_ENV" \
- && pip install --upgrade pip \
- && pip install --no-cache-dir huawei-solar paho-mqtt
+# Libs (paho 2.x + huawei-solar)
+# *Si quieres máxima estabilidad, fija versiones explícitas
+RUN /opt/venv/bin/pip install "paho-mqtt>=2.1.0" "huawei-solar>=2.4.0"
 
-# Copia tu script a /app (ajusta el nombre si es distinto)
-COPY huawei_mqtt.py /app/
+ENV PATH="/opt/venv/bin:${PATH}"
 
-# Copia s6 services y da permisos (RUTA CORRECTA)
-COPY rootfs/ /
-RUN chmod +x /etc/services.d/huawei-mqtt/run /etc/services.d/huawei-mqtt/finish || true
+# Copias
+COPY rootfs /
+# Asegúrate de que el servicio es huawei-mqtt:
+# /etc/services.d/huawei-mqtt/run
+RUN chmod +x /etc/services.d/huawei-mqtt/run
