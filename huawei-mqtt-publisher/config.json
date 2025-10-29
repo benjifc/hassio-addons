@@ -12,21 +12,31 @@
   "host_pid:": false,
   "options": {
     "inverter_ip": "192.168.1.102",
-    "modbus_port": 502,
-    "modbus_slave_id": 1,
-    "mqtt_host": "core-mosquitto",
+    "mqtt_host": "192.168.1.132",
+    "mqtt_username": "kuser",
+    "mqtt_password": "",
     "mqtt_port": 1883,
-    "mqtt_username": "homeassistant",
-    "mqtt_password": ""
+    "modbus_slave_id": 1,
+    "modbus_port": 502,
+    "mqtt_qos": 1,
+    "mqtt_client_id": "huawei-mqtt-publisher",
+    "mqtt_protocol": "311",
+    "mqtt_tls": false,
+    "mqtt_keepalive": 60
   },
   "schema": {
     "inverter_ip": "str",
-    "modbus_port": "int",
-    "modbus_slave_id": "int",
     "mqtt_host": "str",
-    "mqtt_port": "int",
     "mqtt_username": "str",
-    "mqtt_password": "password"
+    "mqtt_password": "str?",
+    "mqtt_port": "int",
+    "modbus_slave_id": "int",
+    "modbus_port": "int",
+    "mqtt_qos": "int",
+    "mqtt_client_id": "str",
+    "mqtt_protocol": "list(311|5)?",
+    "mqtt_tls": "bool?",
+    "mqtt_keepalive": "int?"
   },
   "map": ["ssl"]
 }
