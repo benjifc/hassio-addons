@@ -80,31 +80,22 @@ log.info(
 #     rn.GRID_C_VOLTAGE, rn.ACTIVE_GRID_C_CURRENT
 # ]
 VARS_IMMEDIATE = [
-    # Strings fotovoltaicos
+    # PV strings
     rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
     rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
-    rn.INPUT_POWER,  # Potencia total de entrada desde paneles
+    rn.INPUT_POWER,  # Potencia total desde los paneles solares
 
-    # Red eléctrica
+    # Red y potencia
     rn.GRID_VOLTAGE, rn.GRID_CURRENT,
     rn.ACTIVE_POWER, rn.REACTIVE_POWER,
-    rn.POWER_FACTOR,
-    rn.GRID_FREQUENCY,
+    rn.POWER_FACTOR, rn.GRID_FREQUENCY,
 
-    # Potencias trifásicas (si tu inversor lo soporta)
-    rn.ACTIVE_GRID_A_POWER, rn.ACTIVE_GRID_B_POWER, rn.ACTIVE_GRID_C_POWER,
-    rn.GRID_A_VOLTAGE, rn.GRID_B_VOLTAGE, rn.GRID_C_VOLTAGE,
-    rn.ACTIVE_GRID_A_CURRENT, rn.ACTIVE_GRID_B_CURRENT, rn.ACTIVE_GRID_C_CURRENT,
+    # Si hay contador SDongle o DDSU666-H
+    rn.POWER_METER_ACTIVE_POWER,
+    rn.POWER_METER_REACTIVE_POWER,
 
-    # Contador o meter externo (si tienes)
-    rn.POWER_METER_ACTIVE_POWER, rn.POWER_METER_REACTIVE_POWER,
-    rn.POWER_METER_POWER_FACTOR,
-
-    # Batería (LUNA2000 o similar)
-    rn.STORAGE_CHARGE_DISCHARGE_POWER,
-    rn.STORAGE_CURRENT_DAY_CHARGE_CAPACITY,
-    rn.STORAGE_CURRENT_DAY_DISCHARGE_CAPACITY,
-    rn.STORAGE_STATE_OF_CAPACITY,  # % de SOC
+    # Carga/consumo doméstico (calculado por el meter)
+    rn.LOAD_POWER,
 ]
 
 
@@ -115,23 +106,32 @@ VARS_IMMEDIATE = [
 #     rn.GRID_EXPORTED_ENERGY, rn.GRID_ACCUMULATED_ENERGY
 #     ]
 VARS_PERIODIC = [
-    rn.DAY_ACTIVE_POWER_PEAK,
-    rn.EFFICIENCY,
-    rn.INTERNAL_TEMPERATURE,
-    rn.INSULATION_RESISTANCE,
+    # Estado general y diagnósticos
     rn.DEVICE_STATUS,
     rn.FAULT_CODE,
+    rn.INTERNAL_TEMPERATURE,
+    rn.EFFICIENCY,
+    rn.DAY_ACTIVE_POWER_PEAK,
+    rn.INSULATION_RESISTANCE,
 
+    # Energía diaria y total
     rn.DAILY_YIELD_ENERGY,
     rn.ACCUMULATED_YIELD_ENERGY,
     rn.GRID_EXPORTED_ENERGY,
     rn.GRID_ACCUMULATED_ENERGY,
 
+    # Totales de generación y exportación
     rn.TOTAL_FEED_IN_TO_GRID,
     rn.TOTAL_SUPPLY_FROM_GRID,
-    rn.YEARLY_YIELD_ENERGY,
+
+    # Producción acumulada y actual
+    rn.PV_YIELD_TODAY,
+    rn.INVERTER_ENERGY_YIELD_TODAY,
+    rn.INVERTER_TOTAL_ENERGY_YIELD,
+
+    # Energía mensual y anual
     rn.MONTHLY_YIELD_ENERGY,
-    rn.POWER_FACTOR_BUILT_IN_ENERGY_SENSOR,
+    rn.YEARLY_YIELD_ENERGY,
 ]
 # --- Señales ---
 shutdown_event = asyncio.Event()
