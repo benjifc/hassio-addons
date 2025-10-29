@@ -51,7 +51,7 @@ def env_bool(name: str, default: bool) -> bool:
         return False
     return default
 
-# --- Lectura de entorno exportado por /etc/services.d/huawei-mqtt/run ---
+# --- Lectura de entorno exportado por run ---
 inverter_ip     = env_str("INVERTER_IP", "192.168.1.102")
 mqtt_host       = env_str("MQTT_HOST", "192.168.1.132")
 mqtt_user       = env_str("MQTT_USERNAME", "kuser")
@@ -65,7 +65,7 @@ mqtt_protocol_s = env_str("MQTT_PROTOCOL", "v5")
 mqtt_tls        = env_bool("MQTT_TLS", False)
 mqtt_keepalive  = env_int("MQTT_KEEPALIVE", 60)
 
-# Log de configuración (sin password)
+# --- Configuración efectiva (sin password) ---
 log.info(
     "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s qos=%s client_id=%s proto=%s tls=%s keepalive=%s",
     inverter_ip, port, slave_id, mqtt_host, broker_port, mqtt_user, pub_qos,
@@ -90,10 +90,7 @@ shutdown_event = asyncio.Event()
 
 def _signal_handler():
     log.info("Received shutdown signal")
-    try:
-        shutdown_event.set()
-    except Exception:
-        pass
+    shutdown_event.set()
 
 # --- Detección de versión de Paho ---
 CallbackAPIVersion = getattr(mqtt, "CallbackAPIVersion", None)
@@ -120,35 +117,44 @@ def _mk_client():
 
 def _set_mqtt_callbacks(client):
     client.connected_flag = False
+
     if USE_V2:
         def on_connect(client, userdata, flags, reasonCode, properties):
-            if int(reasonCode) == 0:
+            rc = getattr(reasonCode, "value", reasonCode)
+            if rc == 0:
                 client.connected_flag = True
-                log.info("MQTT connected OK (v2)")
+                log.info("MQTT connected OK (v2), rc=%s", rc)
             else:
-                log.warning("MQTT connect failed (v2): %s", reasonCode)
+                log.warning("MQTT connect failed (v2), rc=%s", rc)
+
         def on_disconnect(client, userdata, reasonCode, properties):
+            rc = getattr(reasonCode, "value", reasonCode)
             client.connected_flag = False
-            log.warning("MQTT disconnected (v2): %s", reasonCode)
+            log.warning("MQTT disconnected (v2), rc=%s", rc)
     else:
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 client.connected_flag = True
-                log.info("MQTT connected OK (v1)")
+                log.info("MQTT connected OK (v1), rc=%s", rc)
             else:
-                log.warning("MQTT connect failed (v1): %s", rc)
+                log.warning("MQTT connect failed (v1), rc=%s", rc)
+
         def on_disconnect(client, userdata, rc):
             client.connected_flag = False
-            log.warning("MQTT disconnected (v1): %s", rc)
+            log.warning("MQTT disconnected (v1), rc=%s", rc)
+
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
 
+# --- Conexión MQTT con reintentos ---
 async def _connect_mqtt_with_retries():
     backoff = 1
     client = _mk_client()
     _set_mqtt_callbacks(client)
+
     if mqtt_user:
         client.username_pw_set(mqtt_user, mqtt_pass)
+
     if mqtt_tls:
         try:
             client.tls_set(cert_reqs=ssl.CERT_NONE)
@@ -179,12 +185,11 @@ async def _connect_mqtt_with_retries():
             log.error("MQTT connect error: %s; retrying in %ss", e, backoff)
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, 60)
-    try:
-        client.loop_stop()
-    except Exception:
-        pass
+
+    client.loop_stop()
     raise asyncio.CancelledError()
 
+# --- Conexión al inversor Huawei ---
 async def _connect_huawei_with_retries():
     backoff = 1
     while not shutdown_event.is_set():
@@ -199,6 +204,7 @@ async def _connect_huawei_with_retries():
             backoff = min(backoff * 2, 60)
     raise asyncio.CancelledError()
 
+# --- Bucle principal de publicación ---
 async def _modbus_loop(huawei_client, mqtt_client):
     periodic_ctr = 0
     while not shutdown_event.is_set():
@@ -206,12 +212,14 @@ async def _modbus_loop(huawei_client, mqtt_client):
             log.warning("MQTT not connected, waiting...")
             await asyncio.sleep(1)
             continue
+
         for key in VARS_IMMEDIATE:
             try:
                 mid = await huawei_client.get(key, slave_id)
                 mqtt_client.publish(f"inversor/Huawei/{key}", str(mid.value), qos=pub_qos)
             except Exception as e:
                 log.error("Error reading %s: %s", key, e)
+
         periodic_ctr += 1
         if periodic_ctr > 5:
             for key in VARS_PERIODIC:
@@ -221,8 +229,10 @@ async def _modbus_loop(huawei_client, mqtt_client):
                 except Exception as e:
                     log.error("Error reading %s: %s", key, e)
             periodic_ctr = 0
+
         await asyncio.sleep(1)
 
+# --- Ciclo completo ---
 async def _run_once():
     mqtt_client = await _connect_mqtt_with_retries()
     huawei_client = await _connect_huawei_with_retries()
@@ -241,6 +251,7 @@ async def _run_once():
         except Exception:
             pass
 
+# --- Main ---
 async def main():
     loop = asyncio.get_running_loop()
     try:
@@ -248,6 +259,7 @@ async def main():
         loop.add_signal_handler(signal.SIGTERM, _signal_handler)
     except NotImplementedError:
         pass
+
     backoff = 1
     while not shutdown_event.is_set():
         try:
