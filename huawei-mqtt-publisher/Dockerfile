@@ -1,6 +1,11 @@
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
+ENV LANG C.UTF-8
+
+# Copy script
+COPY rootfs /
+
 # Instalar dependencias del sistema
 RUN apk add --no-cache \
     python3 \
