@@ -3,7 +3,7 @@ FROM $BUILD_FROM
 
 ENV LANG=C.UTF-8
 
-# Copia el sistema s6
+# Copia scripts s6 y da permisos
 COPY rootfs /
 RUN chmod +x /etc/services.d/huawei/run /etc/services.d/huawei/finish || true
 
@@ -16,8 +16,10 @@ RUN apk add --no-cache \
     musl-dev \
     linux-headers
 
-# Instalar paquetes Python
-RUN pip3 install --no-cache-dir huawei-solar paho-mqtt
+# Instalar paquetes Python (saltando la protección PEP 668)
+RUN pip3 install --no-cache-dir --break-system-packages huawei-solar paho-mqtt
 
 # Copiar el script Python
 COPY huawei_mqtt.py /
+
+# s6 se encarga del arranque
