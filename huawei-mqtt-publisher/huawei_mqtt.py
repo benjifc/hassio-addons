@@ -255,7 +255,7 @@ async def _modbus_loop(huawei_client, mqtt_client):
         try:
             # === LECTURAS BASE ===
             active_power = (await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value  # W
-            meter_power  = (await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value  # W (+importa / -exporta)
+            meter_power  = (await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1  # W (+importa / -exporta)
 
             # === SENSORES DERIVADOS ===
 
