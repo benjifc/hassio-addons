@@ -200,7 +200,7 @@ async def _connect_mqtt_with_retries():
             log.error("Failed to enable TLS: %s", e)
 
     try:
-        client.will_set("inversor/Huawei/status", "offline", qos=1, retain=True)
+        client.will_set("inverter/Huawei/status", "offline", qos=1, retain=True)
     except Exception:
         pass
 
@@ -212,7 +212,7 @@ async def _connect_mqtt_with_retries():
             connect_fn(mqtt_host, broker_port, keepalive=mqtt_keepalive)
             for _ in range(30):
                 if getattr(client, "connected_flag", False):
-                    client.publish("inversor/Huawei/status", "online", qos=1, retain=True)
+                    client.publish("inverter/Huawei/status", "online", qos=1, retain=True)
                     log.info("MQTT connected")
                     return client
                 await asyncio.sleep(1)
@@ -225,7 +225,7 @@ async def _connect_mqtt_with_retries():
     client.loop_stop()
     raise asyncio.CancelledError()
 
-# --- Conexión al inversor Huawei ---
+# --- Conexión al inverter Huawei ---
 async def _connect_huawei_with_retries():
     backoff = 1
     while not shutdown_event.is_set():
@@ -279,7 +279,7 @@ async def _modbus_loop(huawei_client, mqtt_client):
             for key in VARS_PERIODIC:
                 try:
                     mid = await huawei_client.get(key, slave_id)
-                    mqtt_client.publish(f"inversor/Huawei/{key}", str(mid.value), qos=pub_qos)
+                    mqtt_client.publish(f"inverter/Huawei/{key}", str(mid.value), qos=pub_qos)
                 except Exception as e:
                     log.error("Error reading %s: %s", key, e)
             periodic_ctr = 0
@@ -294,7 +294,7 @@ async def _run_once():
     finally:
         log.info("Publishing offline and shutting down...")
         try:
-            mqtt_client.publish("inversor/Huawei/status", "offline", qos=1, retain=True)
+            mqtt_client.publish("inverter/Huawei/status", "offline", qos=1, retain=True)
             mqtt_client.disconnect()
             mqtt_client.loop_stop()
         except Exception:
