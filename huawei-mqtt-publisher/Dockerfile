@@ -15,7 +15,7 @@ LABEL io.hass.arch="${BUILD_ARCH}" \
 
 # ---- Dependencias del sistema ----
 # (jq para leer /data/options.json; no instales bashio)
-RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers jq
+RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev linux-headers jq bash
 
 # ---- Entorno virtual Python ----
 RUN python3 -m venv /opt/venv \
