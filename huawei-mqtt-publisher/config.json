@@ -1,8 +1,8 @@
 {
   "name": "Huawei Inverter MQTT Publisher (simple)",
-  "version": "0.1.7",
+  "version": "0.1.10",
   "slug": "huawei_mqtt_publisher_simple",
-  "description": "Publica datos del inversor Huawei en MQTT vía Modbus TCP (implementación simple).",
+  "description": "Publica datos del inversor Huawei en MQTT vía Modbus TCP (implementación simple y ligera, sin hilos ni callbacks).",
   "url": "https://github.com/benjifc/hassio-addons",
   "arch": ["aarch64", "amd64"],
   "startup": "services",
@@ -19,7 +19,7 @@
     "mqtt_port": 1883,
     "mqtt_username": "kmosquito",
     "mqtt_password": "",
-    "mqtt_qos": 1,
+    "mqtt_qos": 0,
     "mqtt_client_id": "huawei-mqtt-publisher-simple",
     "mqtt_protocol": "311",
     "mqtt_tls": false,
@@ -27,23 +27,24 @@
 
     "log_level": "INFO",
 
-    "read_interval": 7.0,
-    "per_read_delay": 0.4,
+    "read_interval": 1.2,
+    "per_read_delay": 0.12,
+    "periodic_every": 8,
+
+    "force_sync": true,
+    "max_reg_reads": 1,
+
+    "publish_changed_only": true,
+    "change_eps": 0.01,
 
     "vars_immediate": [
-      "PV_01_VOLTAGE", "PV_01_CURRENT", "PV_02_VOLTAGE", "PV_02_CURRENT",
-      "INPUT_POWER", "ACTIVE_POWER", "REACTIVE_POWER", "POWER_FACTOR",
-      "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY",
-      "POWER_METER_ACTIVE_POWER", "POWER_METER_REACTIVE_POWER"
+      "INPUT_POWER", "ACTIVE_POWER", "POWER_FACTOR",
+      "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY"
     ],
     "vars_periodic": [
-      "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE", "INSULATION_RESISTANCE",
-      "EFFICIENCY", "DAY_ACTIVE_POWER_PEAK",
-      "DAILY_YIELD_ENERGY", "ACCUMULATED_YIELD_ENERGY", "PV_YIELD_TODAY",
-      "INVERTER_ENERGY_YIELD_TODAY", "INVERTER_TOTAL_YIELD",
-      "MONTHLY_YIELD_ENERGY", "YEARLY_YIELD_ENERGY",
-      "GRID_EXPORTED_ENERGY", "GRID_ACCUMULATED_ENERGY",
-      "TOTAL_FEED_IN_TO_GRID", "TOTAL_SUPPLY_FROM_GRID"
+      "DEVICE_STATUS", "INTERNAL_TEMPERATURE",
+      "DAILY_YIELD_ENERGY", "MONTHLY_YIELD_ENERGY",
+      "YEARLY_YIELD_ENERGY", "EFFICIENCY"
     ]
   },
 
@@ -56,7 +57,7 @@
     "mqtt_port": "int",
     "mqtt_username": "str?",
     "mqtt_password": "password?",
-    "mqtt_qos": "int",
+    "mqtt_qos": "int?",
     "mqtt_client_id": "str",
     "mqtt_protocol": "list(311|5)?",
     "mqtt_tls": "bool?",
@@ -66,6 +67,12 @@
 
     "read_interval": "float?",
     "per_read_delay": "float?",
+    "periodic_every": "int?",
+
+    "force_sync": "bool?",
+    "max_reg_reads": "int?",
+    "publish_changed_only": "bool?",
+    "change_eps": "float?",
 
     "vars_immediate": ["str"],
     "vars_periodic": ["str"]
