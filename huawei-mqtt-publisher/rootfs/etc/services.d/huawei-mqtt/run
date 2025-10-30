@@ -3,12 +3,19 @@ set -eu
 
 OPTS="/data/options.json"
 
-# Función auxiliar para leer valores del config.json
+# --- Helpers -------------------------------------------------
+# Lee un valor escalar del options.json (string/number/bool)
 val() {
   jq -r ".${1} // empty" "$OPTS"
 }
 
-# Variables requeridas
+# Lee y devuelve un array JSON en formato compacto (o vacío)
+val_array_json() {
+  # -e: si la expresión no existe, jq devuelve código != 0; lo manejamos con ||
+  jq -ce ".${1} | select(type==\"array\")" "$OPTS" 2>/dev/null || echo ""
+}
+
+# --- Requeridos ----------------------------------------------
 export INVERTER_IP="$(val inverter_ip)"
 export MQTT_HOST="$(val mqtt_host)"
 export MQTT_USERNAME="$(val mqtt_username)"
@@ -19,16 +26,41 @@ export MODBUS_PORT="$(val modbus_port)"
 export MQTT_QOS="$(val mqtt_qos)"
 export MQTT_CLIENT_ID="$(val mqtt_client_id)"
 
-# Variables opcionales
+# --- Opcionales ----------------------------------------------
 PROTO="$(val mqtt_protocol)"
 TLS="$(val mqtt_tls)"
 KEEPALIVE="$(val mqtt_keepalive)"
 
-[ -n "$PROTO" ] && export MQTT_PROTOCOL="$PROTO"
-[ -n "$TLS" ] && export MQTT_TLS="$TLS"
-[ -n "$KEEPALIVE" ] && export MQTT_KEEPALIVE="$KEEPALIVE"
+[ -n "${PROTO:-}" ] && export MQTT_PROTOCOL="$PROTO"
+[ -n "${TLS:-}" ] && export MQTT_TLS="$TLS"
+[ -n "${KEEPALIVE:-}" ] && export MQTT_KEEPALIVE="$KEEPALIVE"
 
+# --- NUEVO: listas de registros ------------------------------
+# Se exportan como JSON compacto; el script Python las parseará.
+VARS_IMMEDIATE_JSON="$(val_array_json vars_immediate)"
+VARS_PERIODIC_JSON="$(val_array_json vars_periodic)"
+
+# Solo exportamos si no están vacías (si están vacías, Python usará defaults)
+if [ -n "${VARS_IMMEDIATE_JSON:-}" ]; then
+  export VARS_IMMEDIATE="$VARS_IMMEDIATE_JSON"
+fi
+if [ -n "${VARS_PERIODIC_JSON:-}" ]; then
+  export VARS_PERIODIC="$VARS_PERIODIC_JSON"
+fi
+
+# --- Log de arranque -----------------------------------------
 echo "[INFO] Starting Huawei Inverter MQTT Publisher..."
-echo "[INFO] Inverter: $INVERTER_IP | MQTT: $MQTT_HOST:$MQTT_PORT (client $MQTT_CLIENT_ID)"
+echo "[INFO] Inverter: ${INVERTER_IP} | MQTT: ${MQTT_HOST}:${MQTT_PORT} (client ${MQTT_CLIENT_ID})"
 
+# Info útil de las listas si existen
+if [ -n "${VARS_IMMEDIATE_JSON:-}" ]; then
+  COUNT_IMM="$(echo "$VARS_IMMEDIATE_JSON" | jq 'length')"
+  echo "[INFO] vars_immediate: ${COUNT_IMM} registros"
+fi
+if [ -n "${VARS_PERIODIC_JSON:-}" ]; then
+  COUNT_PER="$(echo "$VARS_PERIODIC_JSON" | jq 'length')"
+  echo "[INFO] vars_periodic: ${COUNT_PER} registros"
+fi
+
+# --- Ejecuta servicio ----------------------------------------
 exec /opt/venv/bin/python -u /app/huawei_mqtt.py
