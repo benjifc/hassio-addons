@@ -13,7 +13,7 @@
     "inverter_ip": "192.168.1.102",
     "modbus_slave_id": 1,
     "modbus_port": 502,
-    "mqtt_host": "192.168.1.132",
+    "mqtt_host": "core-mosquitto",
     "mqtt_port": 1883,
     "mqtt_username": "kuser",
     "mqtt_password": "",
@@ -32,7 +32,7 @@
       "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE", "INSULATION_RESISTANCE",
       "EFFICIENCY", "DAY_ACTIVE_POWER_PEAK",
       "DAILY_YIELD_ENERGY", "ACCUMULATED_YIELD_ENERGY", "PV_YIELD_TODAY",
-      "INVERTER_ENERGY_YIELD_TODAY", "INVERTER_TOTAL_YIELD",
+      "INVERTER_ENERGY_YIELD_TODAY", "INVERTER_TOTAL_ENERGY_YIELD",
       "MONTHLY_YIELD_ENERGY", "YEARLY_YIELD_ENERGY",
       "GRID_EXPORTED_ENERGY", "GRID_ACCUMULATED_ENERGY",
       "TOTAL_FEED_IN_TO_GRID", "TOTAL_SUPPLY_FROM_GRID"
@@ -51,8 +51,8 @@
     "mqtt_protocol": "list(311|5)?",
     "mqtt_tls": "bool?",
     "mqtt_keepalive": "int?",
-    "vars_immediate": ["list(str)?"],
-    "vars_periodic": ["list(str)?"]
+    "vars_immediate": ["list(str)?", []],
+    "vars_periodic": ["list(str)?", []]
   },
   "map": ["ssl"]
 }
