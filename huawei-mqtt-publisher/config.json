@@ -1,6 +1,6 @@
 {
   "name": "Huawei Inverter MQTT Publisher",
-  "version": "1.0.57",
+  "version": "1.0.58",
   "slug": "huawei_mqtt_publisher",
   "description": "Publica datos del inversor Huawei Solar en MQTT usando Modbus TCP.",
   "url": "https://github.com/benjifc/hassio-addons",
@@ -14,6 +14,7 @@
     "inverter_ip": "192.168.1.102",
     "modbus_slave_id": 1,
     "modbus_port": 502,
+
     "mqtt_host": "core-mosquitto",
     "mqtt_port": 1883,
     "mqtt_username": "kuser",
@@ -23,13 +24,19 @@
     "mqtt_protocol": "311",
     "mqtt_tls": false,
     "mqtt_keepalive": 60,
+
     "log_level": "INFO",
+
+    "read_interval": 3.0,
+    "per_read_delay": 0.5,
+
     "vars_immediate": [
       "PV_01_VOLTAGE", "PV_01_CURRENT", "PV_02_VOLTAGE", "PV_02_CURRENT",
       "INPUT_POWER", "ACTIVE_POWER", "REACTIVE_POWER", "POWER_FACTOR",
       "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY",
       "POWER_METER_ACTIVE_POWER", "POWER_METER_REACTIVE_POWER"
     ],
+
     "vars_periodic": [
       "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE", "INSULATION_RESISTANCE",
       "EFFICIENCY", "DAY_ACTIVE_POWER_PEAK",
@@ -45,6 +52,7 @@
     "inverter_ip": "str",
     "modbus_slave_id": "int",
     "modbus_port": "int",
+
     "mqtt_host": "str",
     "mqtt_port": "int",
     "mqtt_username": "str?",
@@ -54,7 +62,12 @@
     "mqtt_protocol": "list(311|5)?",
     "mqtt_tls": "bool?",
     "mqtt_keepalive": "int?",
+
     "log_level": "list(DEBUG|INFO|WARNING|ERROR|CRITICAL)?",
+
+    "read_interval": "float?",
+    "per_read_delay": "float?",
+
     "vars_immediate": ["str"],
     "vars_periodic": ["str"]
   },

@@ -6,10 +6,11 @@ import signal
 import logging
 import ssl
 import json
-from typing import Optional
+from typing import Optional, List, Any
 
 from huawei_solar import AsyncHuaweiSolar, register_names as rn
 import paho.mqtt.client as mqtt
+
 
 # ---------- Utilidades de entorno ----------
 def _clean(s: Optional[str]) -> Optional[str]:
@@ -17,10 +18,12 @@ def _clean(s: Optional[str]) -> Optional[str]:
         return None
     return str(s).strip().strip('"').strip("'")
 
+
 def env_str(name: str, default: str) -> str:
     val = os.getenv(name)
     val = _clean(val) if val is not None else default
     return val if val != "" else default
+
 
 def env_int(name: str, default: int) -> int:
     val = os.getenv(name)
@@ -32,6 +35,7 @@ def env_int(name: str, default: int) -> int:
         logging.getLogger(__name__).warning("Env %s tenía valor no entero %r, uso %s", name, val, default)
         return int(default)
 
+
 def env_float(name: str, default: float) -> float:
     val = os.getenv(name)
     if val is None or _clean(val) == "":
@@ -41,6 +45,7 @@ def env_float(name: str, default: float) -> float:
     except Exception:
         logging.getLogger(__name__).warning("Env %s tenía valor no float %r, uso %s", name, val, default)
         return float(default)
+
 
 def env_bool(name: str, default: bool) -> bool:
     val = os.getenv(name)
@@ -53,6 +58,7 @@ def env_bool(name: str, default: bool) -> bool:
         return False
     return default
 
+
 def _parse_log_level(s: str, default=logging.INFO) -> int:
     if not s:
         return default
@@ -63,6 +69,7 @@ def _parse_log_level(s: str, default=logging.INFO) -> int:
         except Exception:
             return default
     return getattr(logging, s, default)
+
 
 # --- Log level desde ENV antes de configurar logging ---
 LOG_LEVEL = _parse_log_level(env_str("LOG_LEVEL", "INFO"))
@@ -75,6 +82,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 logging.getLogger("huawei_solar").setLevel(logging.WARNING)
+
 
 # --- Lectura de entorno exportado por run ---
 inverter_ip     = env_str("INVERTER_IP", "192.168.1.102")
@@ -90,12 +98,13 @@ mqtt_protocol_s = env_str("MQTT_PROTOCOL", "v5")
 mqtt_tls        = env_bool("MQTT_TLS", False)
 mqtt_keepalive  = env_int("MQTT_KEEPALIVE", 60)
 
-# Nuevos ENV de ritmo de lectura
-READ_INTERVAL   = env_float("READ_INTERVAL", 2.0)   # descanso al final de cada ciclo
-PER_READ_DELAY  = env_float("PER_READ_DELAY", 0.3)  # pausa entre peticiones Modbus
+# Ritmos de lectura configurables desde el add-on
+READ_INTERVAL   = env_float("READ_INTERVAL", 3.0)   # pausa al final del ciclo
+PER_READ_DELAY  = env_float("PER_READ_DELAY", 0.5)  # pausa entre peticiones Modbus
 
 log.info(
-    "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s qos=%s client_id=%s proto=%s tls=%s keepalive=%s | log_level=%s | read_interval=%.3f | per_read_delay=%.3f",
+    "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s "
+    "qos=%s client_id=%s proto=%s tls=%s keepalive=%s | log_level=%s | read_interval=%.3f | per_read_delay=%.3f",
     inverter_ip, port, slave_id, mqtt_host, broker_port, mqtt_user, pub_qos,
     mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive, LOG_LEVEL,
     READ_INTERVAL, PER_READ_DELAY
@@ -120,10 +129,16 @@ DEFAULT_VARS_PERIODIC = [
     rn.TOTAL_FEED_IN_TO_GRID, rn.TOTAL_SUPPLY_FROM_GRID,
 ]
 
-_unknown_regs = {}
-last_mqtt_client = None
+_unknown_regs = {}         # nombres no mapeables desde ENV
+_unreadable_regs = set()   # registros que devuelven ExceptionResponse code=2
+last_mqtt_client = None    # MQTT client disponible tras conectar
 
-def _map_env_registers(env_name: str, default_list):
+
+def _map_env_registers(env_name: str, default_list: List[Any]):
+    """
+    Lee JSON de la env VARS_IMMEDIATE / VARS_PERIODIC (lista de strings)
+    y lo mapea a rn.<REGISTRO>. Si hay desconocidos, los acumula en _unknown_regs.
+    """
     raw = os.getenv(env_name, "").strip()
     if not raw:
         log.info("%s no definido; usando defaults (%d regs)", env_name, len(default_list))
@@ -154,9 +169,11 @@ def _map_env_registers(env_name: str, default_list):
     log.info("%s resuelto a %d registros", env_name, len(resolved))
     return resolved if resolved else default_list
 
-# --- Variables de entorno ---
+
+# --- Variables de entorno (pueden sobrescribir defaults) ---
 VARS_IMMEDIATE = _map_env_registers("VARS_IMMEDIATE", DEFAULT_VARS_IMMEDIATE)
 VARS_PERIODIC  = _map_env_registers("VARS_PERIODIC",  DEFAULT_VARS_PERIODIC)
+
 
 # --- Señales ---
 shutdown_event = asyncio.Event()
@@ -164,14 +181,17 @@ def _signal_handler():
     log.info("Received shutdown signal")
     shutdown_event.set()
 
+
 # --- MQTT setup ---
 CallbackAPIVersion = getattr(mqtt, "CallbackAPIVersion", None)
 USE_V2 = CallbackAPIVersion is not None
+
 
 def _pick_protocol():
     if mqtt_protocol_s.lower() in ("v311", "311", "3.1.1", "mqttv311"):
         return mqtt.MQTTv311
     return getattr(mqtt, "MQTTv5", mqtt.MQTTv311)
+
 
 def _mk_client():
     if USE_V2:
@@ -186,6 +206,7 @@ def _mk_client():
         client = mqtt.Client(client_id=mqtt_client_id, protocol=mqtt.MQTTv311)
     client.enable_logger(log)
     return client
+
 
 def _set_mqtt_callbacks(client):
     client.connected_flag = False
@@ -221,6 +242,7 @@ def _set_mqtt_callbacks(client):
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
 
+
 # --- Conexión MQTT ---
 async def _connect_mqtt_with_retries():
     global last_mqtt_client
@@ -252,6 +274,7 @@ async def _connect_mqtt_with_retries():
                     client.publish("inverter/Huawei/status", "online", qos=1, retain=True)
                     last_mqtt_client = client
                     log.info("MQTT connected")
+                    # Publica info de config si procede
                     if _unknown_regs:
                         client.publish(
                             "inverter/Huawei/config/unknown_registers",
@@ -269,6 +292,7 @@ async def _connect_mqtt_with_retries():
     client.loop_stop()
     raise asyncio.CancelledError()
 
+
 # --- Huawei connection ---
 async def _connect_huawei_with_retries():
     backoff = 1
@@ -276,15 +300,11 @@ async def _connect_huawei_with_retries():
         try:
             log.info("Connecting to Huawei inverter %s:%d (slave_id=%d)", inverter_ip, port, slave_id)
             try:
-                # intento con max_reg_reads=1 para evitar agrupaciones pesadas
-                huawei_client = await AsyncHuaweiSolar.create(
-                    inverter_ip, port, slave_id, max_reg_reads=1
-                )
+                # intentar evitar lecturas agrupadas pesadas
+                huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id, max_reg_reads=1)
             except TypeError:
-                # fallback si la versión de la librería no soporta el kwarg
-                huawei_client = await AsyncHuaweiSolar.create(
-                    inverter_ip, port, slave_id
-                )
+                # fallback si la versión no soporta max_reg_reads
+                huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id)
             log.info("✅ Huawei inverter connected successfully")
             return huawei_client
         except Exception as e:
@@ -293,16 +313,39 @@ async def _connect_huawei_with_retries():
             backoff = min(backoff * 2, 60)
     raise asyncio.CancelledError()
 
+
 # --- Lectura con reintentos (con pequeño backoff) ---
+def _is_illegal_data_address(err: Exception) -> bool:
+    # La librería lanza mensajes tipo: ExceptionResponse(..., exception_code=2)
+    s = str(err)
+    return "exception_code=2" in s or "Illegal" in s
+
+
 async def safe_get(huawei_client, key, retries=3, delay=1.0):
     for attempt in range(1, retries + 1):
         try:
             return await huawei_client.get(key, slave_id)
         except Exception as e:
+            if _is_illegal_data_address(e):
+                # registrar como no soportado y abortar reintentos para este registro
+                _unreadable_regs.add(str(key))
+                log.warning("Registro no soportado por el inversor (%s): %s", key, e)
+                raise
             log.warning("Lectura fallida (%s) intento %d/%d: %s", key, attempt, retries, e)
             if attempt < retries:
                 await asyncio.sleep(delay * attempt)  # backoff lineal
     raise RuntimeError(f"Fallo permanente leyendo {key}")
+
+
+def _publish_unreadable_if_changed(mqtt_client):
+    """Publica la lista de registros no soportados si existe y hay MQTT."""
+    if mqtt_client and _unreadable_regs:
+        try:
+            payload = json.dumps(sorted(_unreadable_regs), ensure_ascii=False)
+            mqtt_client.publish("inverter/Huawei/config/unreadable_registers", payload, qos=1, retain=True)
+        except Exception as e:
+            log.debug("No se pudo publicar unreadable_registers: %s", e)
+
 
 # --- Bucle principal ---
 async def _modbus_loop(huawei_client, mqtt_client):
@@ -322,6 +365,8 @@ async def _modbus_loop(huawei_client, mqtt_client):
                 mqtt_client.publish(f"inverter/Huawei/{key}", str(mid.value), qos=pub_qos)
                 fail_count = 0
             except Exception as e:
+                # si fue "no soportado", ya lo marcó safe_get; publicamos listado
+                _publish_unreadable_if_changed(mqtt_client)
                 log.error("Error leyendo %s: %s", key, e)
                 fail_count += 1
             await asyncio.sleep(PER_READ_DELAY)
@@ -335,6 +380,7 @@ async def _modbus_loop(huawei_client, mqtt_client):
                     mqtt_client.publish(f"inverter/Huawei/{key}", str(mid.value), qos=pub_qos)
                     fail_count = 0
                 except Exception as e:
+                    _publish_unreadable_if_changed(mqtt_client)
                     log.error("Error leyendo %s: %s", key, e)
                     fail_count += 1
                 await asyncio.sleep(PER_READ_DELAY)
@@ -345,6 +391,7 @@ async def _modbus_loop(huawei_client, mqtt_client):
             raise asyncio.CancelledError()
 
         await asyncio.sleep(READ_INTERVAL)
+
 
 # --- Ejecución completa ---
 async def _run_once():
@@ -364,6 +411,7 @@ async def _run_once():
             await huawei_client.stop()
         except Exception:
             pass
+
 
 # --- Main ---
 async def main():
@@ -387,6 +435,7 @@ async def main():
         else:
             await asyncio.sleep(2)
             backoff = 1
+
 
 if __name__ == "__main__":
     try:
