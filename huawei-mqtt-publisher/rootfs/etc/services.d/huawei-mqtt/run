@@ -3,29 +3,22 @@ set -eu
 
 OPTS="/data/options.json"
 
-# --- Helpers -------------------------------------------------
-# Lee un valor escalar (str/num/bool). Devuelve vacío si no existe.
-val() {
-  jq -r ".${1} // empty" "$OPTS" 2>/dev/null || echo ""
-}
+val() { jq -r ".${1} // empty" "$OPTS" 2>/dev/null || echo ""; }
+val_array_json() { jq -ce ".${1} | select(type==\"array\")" "$OPTS" 2>/dev/null || echo ""; }
 
-# Lee un array JSON y lo deja en formato compacto (una sola línea JSON)
-val_array_json() {
-  jq -ce ".${1} | select(type==\"array\")" "$OPTS" 2>/dev/null || echo ""
-}
-
-# --- Requeridos ----------------------------------------------
+# Requeridos
 export INVERTER_IP="$(val inverter_ip)"
-export MQTT_HOST="$(val mqtt_host)"
-export MQTT_USERNAME="$(val mqtt_username)"
-export MQTT_PASSWORD="$(val mqtt_password)"
-export MQTT_PORT="$(val mqtt_port)"
 export MODBUS_SLAVE_ID="$(val modbus_slave_id)"
 export MODBUS_PORT="$(val modbus_port)"
+
+export MQTT_HOST="$(val mqtt_host)"
+export MQTT_PORT="$(val mqtt_port)"
+export MQTT_USERNAME="$(val mqtt_username)"
+export MQTT_PASSWORD="$(val mqtt_password)"
 export MQTT_QOS="$(val mqtt_qos)"
 export MQTT_CLIENT_ID="$(val mqtt_client_id)"
 
-# --- Opcionales ----------------------------------------------
+# Opcionales
 PROTO="$(val mqtt_protocol)"
 TLS="$(val mqtt_tls)"
 KEEPALIVE="$(val mqtt_keepalive)"
@@ -40,31 +33,17 @@ PER_READ_DELAY="$(val per_read_delay)"
 [ -n "${READ_INTERVAL:-}" ] && export READ_INTERVAL="$READ_INTERVAL"
 [ -n "${PER_READ_DELAY:-}" ] && export PER_READ_DELAY="$PER_READ_DELAY"
 
-# --- Listas de registros -------------------------------------
+# Arrays
 VARS_IMMEDIATE_JSON="$(val_array_json vars_immediate)"
 VARS_PERIODIC_JSON="$(val_array_json vars_periodic)"
 
-if [ -n "${VARS_IMMEDIATE_JSON:-}" ]; then
-  export VARS_IMMEDIATE="$VARS_IMMEDIATE_JSON"
-fi
-if [ -n "${VARS_PERIODIC_JSON:-}" ]; then
-  export VARS_PERIODIC="$VARS_PERIODIC_JSON"
-fi
+[ -n "${VARS_IMMEDIATE_JSON:-}" ] && export VARS_IMMEDIATE="$VARS_IMMEDIATE_JSON"
+[ -n "${VARS_PERIODIC_JSON:-}" ] && export VARS_PERIODIC="$VARS_PERIODIC_JSON"
 
-# --- Log de arranque -----------------------------------------
-echo "[INFO] Starting Huawei Inverter MQTT Publisher..."
-echo "[INFO] Inverter: ${INVERTER_IP} | MQTT: ${MQTT_HOST}:${MQTT_PORT} (client ${MQTT_CLIENT_ID})"
-echo "[INFO] Modbus: ${MODBUS_PORT} slave_id=${MODBUS_SLAVE_ID}"
-echo "[INFO] Log level: ${LOG_LEVEL:-INFO} | Read interval: ${READ_INTERVAL:-3.0}s | Per-read delay: ${PER_READ_DELAY:-0.5}s"
+echo "[INFO] Starting Huawei Inverter MQTT Publisher (Simple)..."
+echo "[INFO] Inverter: ${INVERTER_IP}:${MODBUS_PORT} (slave ${MODBUS_SLAVE_ID})"
+echo "[INFO] MQTT: ${MQTT_HOST}:${MQTT_PORT} client=${MQTT_CLIENT_ID}"
+[ -n "${VARS_IMMEDIATE_JSON:-}" ] && echo "[INFO] vars_immediate: $(echo "$VARS_IMMEDIATE_JSON" | jq 'length') regs"
+[ -n "${VARS_PERIODIC_JSON:-}" ] && echo "[INFO] vars_periodic:  $(echo "$VARS_PERIODIC_JSON" | jq 'length') regs"
 
-if [ -n "${VARS_IMMEDIATE_JSON:-}" ]; then
-  COUNT_IMM="$(echo "$VARS_IMMEDIATE_JSON" | jq 'length')"
-  echo "[INFO] vars_immediate: ${COUNT_IMM} registros"
-fi
-if [ -n "${VARS_PERIODIC_JSON:-}" ]; then
-  COUNT_PER="$(echo "$VARS_PERIODIC_JSON" | jq 'length')"
-  echo "[INFO] vars_periodic: ${COUNT_PER} registros"
-fi
-
-# --- Ejecuta servicio ----------------------------------------
-exec /opt/venv/bin/python -u /app/huawei_mqtt.py
+exec /opt/venv/bin/python -u /app/main.py

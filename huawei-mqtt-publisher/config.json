@@ -1,15 +1,15 @@
 {
-  "name": "Huawei Inverter MQTT Publisher",
-  "version": "1.0.59",
-  "slug": "huawei_mqtt_publisher",
-  "description": "Publica datos del inversor Huawei Solar en MQTT usando Modbus TCP.",
+  "name": "Huawei Inverter MQTT Publisher (Simple)",
+  "version": "0.1.0",
+  "slug": "huawei_mqtt_publisher_simple",
+  "description": "Publica datos del Huawei SUN2000 por MQTT con bucle sencillo sin asyncio.",
   "url": "https://github.com/benjifc/hassio-addons",
   "arch": ["aarch64", "amd64"],
   "startup": "services",
   "boot": "auto",
   "init": false,
   "host_network": false,
-  "hostname": "kexpiral-huawei-mqtt",  
+
   "options": {
     "inverter_ip": "192.168.1.102",
     "modbus_slave_id": 1,
@@ -20,31 +20,24 @@
     "mqtt_username": "kuser",
     "mqtt_password": "",
     "mqtt_qos": 1,
-    "mqtt_client_id": "huawei-mqtt-publisher",
+    "mqtt_client_id": "huawei-mqtt-publisher-simple",
     "mqtt_protocol": "311",
     "mqtt_tls": false,
     "mqtt_keepalive": 60,
 
     "log_level": "INFO",
 
-    "read_interval": 3.0,
-    "per_read_delay": 0.5,
+    "read_interval": 7.0,
+    "per_read_delay": 0.4,
 
     "vars_immediate": [
-      "PV_01_VOLTAGE", "PV_01_CURRENT", "PV_02_VOLTAGE", "PV_02_CURRENT",
-      "INPUT_POWER", "ACTIVE_POWER", "REACTIVE_POWER", "POWER_FACTOR",
+      "INPUT_POWER", "ACTIVE_POWER",
       "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY",
-      "POWER_METER_ACTIVE_POWER", "POWER_METER_REACTIVE_POWER"
+      "POWER_FACTOR"
     ],
-
     "vars_periodic": [
-      "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE", "INSULATION_RESISTANCE",
-      "EFFICIENCY", "DAY_ACTIVE_POWER_PEAK",
-      "DAILY_YIELD_ENERGY", "ACCUMULATED_YIELD_ENERGY", "PV_YIELD_TODAY",
-      "INVERTER_ENERGY_YIELD_TODAY", "INVERTER_TOTAL_YIELD",
-      "MONTHLY_YIELD_ENERGY", "YEARLY_YIELD_ENERGY",
-      "GRID_EXPORTED_ENERGY", "GRID_ACCUMULATED_ENERGY",
-      "TOTAL_FEED_IN_TO_GRID", "TOTAL_SUPPLY_FROM_GRID"
+      "DEVICE_STATUS", "INTERNAL_TEMPERATURE",
+      "DAILY_YIELD_ENERGY", "MONTHLY_YIELD_ENERGY", "YEARLY_YIELD_ENERGY"
     ]
   },
 
@@ -68,8 +61,8 @@
     "read_interval": "float?",
     "per_read_delay": "float?",
 
-    "vars_immediate": ["str"],
-    "vars_periodic": ["str"]
+    "vars_immediate": ["list(str)"],
+    "vars_periodic": ["list(str)"]
   },
 
   "map": ["ssl"]
