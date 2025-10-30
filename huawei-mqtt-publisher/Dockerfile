@@ -18,4 +18,4 @@ COPY main.py /app/main.py
 RUN chmod +x /run.sh
 
 # Entrypoint
-CMD ["/run.sh"]
+CMD ["/run"]
