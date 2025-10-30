@@ -232,51 +232,70 @@ async def _connect_huawei_with_retries():
         try:
             log.info("Connecting to Huawei inverter %s:%d (slave_id=%d)", inverter_ip, port, slave_id)
             huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id)
-            log.info("Huawei inverter connected")
-        # === 🔍 Obtener y mostrar información del inversor ===
-        try:
-            model = await huawei_client.get_inverter_model_name()
-            serial = await huawei_client.get_inverter_serial_number()
-            fw = await huawei_client.get_inverter_software_version()
-            device_type = await huawei_client.get(rn.DEVICE_TYPE, slave_id)
-            rated_power = await huawei_client.get(rn.INVERTER_RATED_POWER, slave_id)
-            nb_optimizers = await huawei_client.get(rn.NUMBER_OF_OPTIMIZERS, slave_id)
-            country_code = await huawei_client.get(rn.COUNTRY_CODE, slave_id)
-            manufacture_date = await huawei_client.get(rn.MANUFACTURE_DATE, slave_id)
-            vendor_name = await huawei_client.get(rn.VENDOR_NAME, slave_id)
+            log.info("✅ Huawei inverter connected successfully")
 
-            log.info("🔌 Huawei inverter information:")
-            log.info("   ▪ Model: %s", model.value)
-            log.info("   ▪ Serial number: %s", serial.value)
-            log.info("   ▪ Firmware version: %s", fw.value)
-            log.info("   ▪ Device type: %s", device_type.value)
-            log.info("   ▪ Rated power: %s W", rated_power.value)
-            log.info("   ▪ Number of optimizers: %s", nb_optimizers.value)
-            log.info("   ▪ Country code: %s", country_code.value)
-            log.info("   ▪ Manufacture date: %s", manufacture_date.value)
-            log.info("   ▪ Vendor: %s", vendor_name.value)
+            # === 🔍 Obtener y mostrar información del inversor ===
+            try:
+                model            = await huawei_client.get_inverter_model_name()
+                serial           = await huawei_client.get_inverter_serial_number()
+                fw               = await huawei_client.get_inverter_software_version()
+                device_type      = await huawei_client.get(rn.DEVICE_TYPE, slave_id)
+                rated_power      = await huawei_client.get(rn.INVERTER_RATED_POWER, slave_id)
+                nb_optimizers    = await huawei_client.get(rn.NUMBER_OF_OPTIMIZERS, slave_id)
+                country_code     = await huawei_client.get(rn.COUNTRY_CODE, slave_id)
+                manufacture_date = await huawei_client.get(rn.MANUFACTURE_DATE, slave_id)
+                vendor_name      = await huawei_client.get(rn.VENDOR_NAME, slave_id)
 
-            # Publicar toda la información en MQTT
-            mqtt_client_local = globals().get("last_mqtt_client")
-            if mqtt_client_local:
-                mqtt_client_local.publish("inverter/Huawei/info/model", str(model.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/serial", str(serial.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/firmware", str(fw.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/device_type", str(device_type.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/rated_power_W", str(rated_power.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/optimizers_count", str(nb_optimizers.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/country_code", str(country_code.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/manufacture_date", str(manufacture_date.value), qos=1, retain=True)
-                mqtt_client_local.publish("inverter/Huawei/info/vendor", str(vendor_name.value), qos=1, retain=True)
+                log.info("🔌 Huawei inverter information:")
+                log.info("   ▪ Model: %s", model.value)
+                log.info("   ▪ Serial number: %s", serial.value)
+                log.info("   ▪ Firmware version: %s", fw.value)
+                log.info("   ▪ Device type: %s", device_type.value)
+                log.info("   ▪ Rated power: %s W", rated_power.value)
+                log.info("   ▪ Number of optimizers: %s", nb_optimizers.value)
+                log.info("   ▪ Country code: %s", country_code.value)
+                log.info("   ▪ Manufacture date: %s", manufacture_date.value)
+                log.info("   ▪ Vendor: %s", vendor_name.value)
 
-        except Exception as e:
-            log.warning("Could not read inverter info: %s", e)
-        # === ============================== ===
+                # Publicar toda la información en MQTT
+                mqtt_client_local = globals().get("last_mqtt_client")
+                if mqtt_client_local:
+                    mqtt_client_local.publish("inverter/Huawei/info/model", str(model.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/serial", str(serial.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/firmware", str(fw.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/device_type", str(device_type.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/rated_power_W", str(rated_power.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/optimizers_count", str(nb_optimizers.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/country_code", str(country_code.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/manufacture_date", str(manufacture_date.value), qos=1, retain=True)
+                    mqtt_client_local.publish("inverter/Huawei/info/vendor", str(vendor_name.value), qos=1, retain=True)
+
+                    import json
+                    info_dict = {
+                        "model": model.value,
+                        "serial": serial.value,
+                        "firmware": fw.value,
+                        "device_type": device_type.value,
+                        "rated_power_W": rated_power.value,
+                        "optimizers_count": nb_optimizers.value,
+                        "country_code": country_code.value,
+                        "manufacture_date": manufacture_date.value,
+                        "vendor": vendor_name.value,
+                    }
+                    mqtt_client_local.publish(
+                        "inverter/Huawei/info/json",
+                        json.dumps(info_dict, ensure_ascii=False),
+                        qos=1,
+                        retain=True,
+                    )
+
+            except Exception as e:
+                log.warning("⚠️ Could not read inverter info: %s", e)
 
             return huawei_client
 
         except Exception as e:
-            log.error("Huawei connect error: %s; retrying in %ss", e, backoff)
+            log.error("❌ Huawei connect error: %s; retrying in %ss", e, backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60)
 
