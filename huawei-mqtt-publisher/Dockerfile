@@ -13,9 +13,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir huawei-solar paho-mqtt
 
 # Copia archivos
-COPY run.sh /run
+COPY run.sh /run.sh
 COPY main.py /app/main.py
-RUN chmod +x /run
+RUN chmod +x /run.sh
 
 # Entrypoint
-CMD ["/run"]
+CMD ["/run.sh"]

@@ -1,8 +1,8 @@
 {
-  "name": "Huawei Inverter MQTT Publisher (Simple)",
-  "version": "0.1.4",
+  "name": "Huawei Inverter MQTT Publisher (simple)",
+  "version": "0.1.5",
   "slug": "huawei_mqtt_publisher_simple",
-  "description": "Publica datos del Huawei SUN2000 por MQTT con bucle sencillo sin asyncio.",
+  "description": "Publica datos del inversor Huawei en MQTT vía Modbus TCP (implementación simple).",
   "url": "https://github.com/benjifc/hassio-addons",
   "arch": ["aarch64", "amd64"],
   "startup": "services",
@@ -17,7 +17,7 @@
 
     "mqtt_host": "core-mosquitto",
     "mqtt_port": 1883,
-    "mqtt_username": "kuser",
+    "mqtt_username": "kmosquito",
     "mqtt_password": "",
     "mqtt_qos": 1,
     "mqtt_client_id": "huawei-mqtt-publisher-simple",
@@ -31,13 +31,10 @@
     "per_read_delay": 0.4,
 
     "vars_immediate": [
-      "INPUT_POWER", "ACTIVE_POWER",
-      "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY",
-      "POWER_FACTOR"
+      "INPUT_POWER", "ACTIVE_POWER", "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY"
     ],
     "vars_periodic": [
-      "DEVICE_STATUS", "INTERNAL_TEMPERATURE",
-      "DAILY_YIELD_ENERGY", "MONTHLY_YIELD_ENERGY", "YEARLY_YIELD_ENERGY"
+      "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE"
     ]
   },
 
@@ -61,8 +58,8 @@
     "read_interval": "float?",
     "per_read_delay": "float?",
 
-    "vars_immediate": ["list(str)"],
-    "vars_periodic": ["list(str)"]
+    "vars_immediate": "list(str)?",
+    "vars_periodic": "list(str)?"
   },
 
   "map": ["ssl"]
