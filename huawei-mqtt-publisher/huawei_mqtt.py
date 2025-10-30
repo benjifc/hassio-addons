@@ -72,54 +72,48 @@ log.info(
     mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive
 )
 
-# --- Variables a leer ---
+# --- Variables a leer SUN2000 ---
 
 VARS_IMMEDIATE = [
     # PV strings
-    rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
-    rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
-    rn.INPUT_POWER,  # Potencia total desde los paneles solares
-
-    # Red y potencia
-    rn.GRID_VOLTAGE, rn.GRID_CURRENT,
-    rn.ACTIVE_POWER, rn.REACTIVE_POWER,
-    rn.POWER_FACTOR, rn.GRID_FREQUENCY,
-
-    # Si hay contador SDongle o DDSU666-H
+    rn.PV_01_VOLTAGE,
+    rn.PV_01_CURRENT,
+    rn.PV_02_VOLTAGE,
+    rn.PV_02_CURRENT,
+    rn.INPUT_POWER,       # Potencia total desde los paneles solares (kW)
+    rn.ACTIVE_POWER,      # Potencia activa inversor → red (kW)
+    rn.REACTIVE_POWER,    # Potencia reactiva (kVar)
+    rn.POWER_FACTOR,      # Factor de potencia
+    rn.GRID_VOLTAGE,      # Voltaje de red (V)
+    rn.GRID_CURRENT,      # Corriente de red (A)
+    rn.GRID_FREQUENCY,    # Frecuencia de red (Hz)
+    # Si hay contador conectado (opcional)
     rn.POWER_METER_ACTIVE_POWER,
     rn.POWER_METER_REACTIVE_POWER,
-
-
 ]
 
-
 VARS_PERIODIC = [
-    # Estado general y diagnósticos
+    # Diagnósticos y estado
     rn.DEVICE_STATUS,
     rn.FAULT_CODE,
     rn.INTERNAL_TEMPERATURE,
+    rn.INSULATION_RESISTANCE,
+    # Rendimiento
     rn.EFFICIENCY,
     rn.DAY_ACTIVE_POWER_PEAK,
-    rn.INSULATION_RESISTANCE,
-
-    # Energía diaria y total
+    # Energías
     rn.DAILY_YIELD_ENERGY,
     rn.ACCUMULATED_YIELD_ENERGY,
-    rn.GRID_EXPORTED_ENERGY,
-    rn.GRID_ACCUMULATED_ENERGY,
-
-    # Totales de generación y exportación
-    rn.TOTAL_FEED_IN_TO_GRID,
-    rn.TOTAL_SUPPLY_FROM_GRID,
-
-    # Producción acumulada y actual
     rn.PV_YIELD_TODAY,
     rn.INVERTER_ENERGY_YIELD_TODAY,
-    rn.INVERTER_TOTAL_ENERGY_YIELD,
-
-    # Energía mensual y anual
+    rn.INVERTER_TOTAL_YIELD,
     rn.MONTHLY_YIELD_ENERGY,
     rn.YEARLY_YIELD_ENERGY,
+    # Exportación / importación
+    rn.GRID_EXPORTED_ENERGY,
+    rn.GRID_ACCUMULATED_ENERGY,
+    rn.TOTAL_FEED_IN_TO_GRID,
+    rn.TOTAL_SUPPLY_FROM_GRID,
 ]
 # --- Señales ---
 shutdown_event = asyncio.Event()
