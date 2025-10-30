@@ -1,6 +1,6 @@
 {
   "name": "Huawei Inverter MQTT Publisher (simple)",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "slug": "huawei_mqtt_publisher_simple",
   "description": "Publica datos del inversor Huawei en MQTT vía Modbus TCP (implementación simple y ligera, sin hilos ni callbacks).",
   "url": "https://github.com/benjifc/hassio-addons",
