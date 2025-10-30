@@ -86,43 +86,27 @@ log.info(
     mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive, LOG_LEVEL
 )
 
-# ======== Defaults SUN2000 (se pueden sobrescribir por ENV) ========
+# ======== Defaults SUN2000 ========
 DEFAULT_VARS_IMMEDIATE = [
     rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
     rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
-    rn.INPUT_POWER,            # W total FV
-    rn.ACTIVE_POWER,           # W (positivo exporta)
-    rn.REACTIVE_POWER,         # var
-    rn.POWER_FACTOR,
-    rn.GRID_VOLTAGE,           # V
-    rn.GRID_CURRENT,           # A
-    rn.GRID_FREQUENCY,         # Hz
-    rn.POWER_METER_ACTIVE_POWER,
-    rn.POWER_METER_REACTIVE_POWER,
+    rn.INPUT_POWER, rn.ACTIVE_POWER, rn.REACTIVE_POWER,
+    rn.POWER_FACTOR, rn.GRID_VOLTAGE, rn.GRID_CURRENT,
+    rn.GRID_FREQUENCY, rn.POWER_METER_ACTIVE_POWER, rn.POWER_METER_REACTIVE_POWER,
 ]
 
 DEFAULT_VARS_PERIODIC = [
-    rn.DEVICE_STATUS,
-    rn.FAULT_CODE,
-    rn.INTERNAL_TEMPERATURE,
-    rn.INSULATION_RESISTANCE,
-    rn.EFFICIENCY,
-    rn.DAY_ACTIVE_POWER_PEAK,
-    rn.DAILY_YIELD_ENERGY,
-    rn.ACCUMULATED_YIELD_ENERGY,
-    rn.PV_YIELD_TODAY,
-    rn.INVERTER_ENERGY_YIELD_TODAY,
-    rn.INVERTER_TOTAL_ENERGY_YIELD,
-    rn.MONTHLY_YIELD_ENERGY,
-    rn.YEARLY_YIELD_ENERGY,
-    rn.GRID_EXPORTED_ENERGY,
-    rn.GRID_ACCUMULATED_ENERGY,
-    rn.TOTAL_FEED_IN_TO_GRID,
-    rn.TOTAL_SUPPLY_FROM_GRID,
+    rn.DEVICE_STATUS, rn.FAULT_CODE, rn.INTERNAL_TEMPERATURE,
+    rn.INSULATION_RESISTANCE, rn.EFFICIENCY, rn.DAY_ACTIVE_POWER_PEAK,
+    rn.DAILY_YIELD_ENERGY, rn.ACCUMULATED_YIELD_ENERGY, rn.PV_YIELD_TODAY,
+    rn.INVERTER_ENERGY_YIELD_TODAY, rn.INVERTER_TOTAL_ENERGY_YIELD,
+    rn.MONTHLY_YIELD_ENERGY, rn.YEARLY_YIELD_ENERGY,
+    rn.GRID_EXPORTED_ENERGY, rn.GRID_ACCUMULATED_ENERGY,
+    rn.TOTAL_FEED_IN_TO_GRID, rn.TOTAL_SUPPLY_FROM_GRID,
 ]
 
-_unknown_regs = {}   # se rellena si hay nombres desconocidos en ENV
-last_mqtt_client = None  # se establece al conectar MQTT
+_unknown_regs = {}
+last_mqtt_client = None
 
 def _map_env_registers(env_name: str, default_list):
     raw = os.getenv(env_name, "").strip()
@@ -155,7 +139,7 @@ def _map_env_registers(env_name: str, default_list):
     log.info("%s resuelto a %d registros", env_name, len(resolved))
     return resolved if resolved else default_list
 
-# --- Variables a leer (sobrescribibles por ENV) ---
+# --- Variables de entorno ---
 VARS_IMMEDIATE = _map_env_registers("VARS_IMMEDIATE", DEFAULT_VARS_IMMEDIATE)
 VARS_PERIODIC  = _map_env_registers("VARS_PERIODIC",  DEFAULT_VARS_PERIODIC)
 
@@ -165,7 +149,7 @@ def _signal_handler():
     log.info("Received shutdown signal")
     shutdown_event.set()
 
-# --- Detección de versión de Paho ---
+# --- MQTT setup ---
 CallbackAPIVersion = getattr(mqtt, "CallbackAPIVersion", None)
 USE_V2 = CallbackAPIVersion is not None
 
@@ -190,9 +174,7 @@ def _mk_client():
 
 def _set_mqtt_callbacks(client):
     client.connected_flag = False
-
     if USE_V2:
-        # v2: on_connect(client, userdata, flags, reasonCode, properties)
         def on_connect(client, userdata, flags, reasonCode, properties):
             rc = getattr(reasonCode, "value", reasonCode)
             if rc == 0:
@@ -204,14 +186,11 @@ def _set_mqtt_callbacks(client):
                 else:
                     log.warning("MQTT connect failed (v2), rc=%s", rc)
 
-        # algunos builds pasan 5 args a on_disconnect
-        # on_disconnect(client, userdata, flags, reasonCode, properties)
         def on_disconnect(client, userdata, flags, reasonCode, properties=None):
             rc = getattr(reasonCode, "value", reasonCode)
             client.connected_flag = False
             log.warning("MQTT disconnected (v2), rc=%s", rc)
     else:
-        # v1: on_connect(client, userdata, flags, rc)
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 client.connected_flag = True
@@ -219,24 +198,20 @@ def _set_mqtt_callbacks(client):
             else:
                 log.warning("MQTT connect failed (v1), rc=%s", rc)
 
-        # v1: on_disconnect(client, userdata, rc)
         def on_disconnect(client, userdata, rc):
             client.connected_flag = False
             log.warning("MQTT disconnected (v1), rc=%s", rc)
-
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
 
-# --- Conexión MQTT con reintentos ---
+# --- Conexión MQTT ---
 async def _connect_mqtt_with_retries():
     global last_mqtt_client
     backoff = 1
     client = _mk_client()
     _set_mqtt_callbacks(client)
-
     if mqtt_user:
         client.username_pw_set(mqtt_user, mqtt_pass)
-
     if mqtt_tls:
         try:
             client.tls_set(cert_reqs=ssl.CERT_NONE)
@@ -244,7 +219,6 @@ async def _connect_mqtt_with_retries():
             log.info("MQTT TLS enabled (insecure mode)")
         except Exception as e:
             log.error("Failed to enable TLS: %s", e)
-
     try:
         client.will_set("inverter/Huawei/status", "offline", qos=1, retain=True)
     except Exception:
@@ -259,20 +233,15 @@ async def _connect_mqtt_with_retries():
             for _ in range(30):
                 if getattr(client, "connected_flag", False):
                     client.publish("inverter/Huawei/status", "online", qos=1, retain=True)
-                    last_mqtt_client = client  # disponible para otras publicaciones
+                    last_mqtt_client = client
                     log.info("MQTT connected")
-                    # Publica (una vez) los registros desconocidos si hay
                     if _unknown_regs:
-                        try:
-                            client.publish(
-                                "inverter/Huawei/config/unknown_registers",
-                                json.dumps(_unknown_regs, ensure_ascii=False),
-                                qos=1,
-                                retain=True,
-                            )
-                            log.info("Unknown registers JSON publicado en MQTT")
-                        except Exception as e:
-                            log.warning("No se pudo publicar unknown_registers: %s", e)
+                        client.publish(
+                            "inverter/Huawei/config/unknown_registers",
+                            json.dumps(_unknown_regs, ensure_ascii=False),
+                            qos=1,
+                            retain=True,
+                        )
                     return client
                 await asyncio.sleep(1)
             log.error("MQTT connection timeout; retrying in %ss", backoff)
@@ -280,11 +249,10 @@ async def _connect_mqtt_with_retries():
             log.error("MQTT connect error: %s; retrying in %ss", e, backoff)
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, 60)
-
     client.loop_stop()
     raise asyncio.CancelledError()
 
-# --- Conexión al inverter Huawei ---
+# --- Huawei connection ---
 async def _connect_huawei_with_retries():
     backoff = 1
     while not shutdown_event.is_set():
@@ -292,93 +260,65 @@ async def _connect_huawei_with_retries():
             log.info("Connecting to Huawei inverter %s:%d (slave_id=%d)", inverter_ip, port, slave_id)
             huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id)
             log.info("✅ Huawei inverter connected successfully")
-
-            # === 🔍 Obtener y publicar información del inversor ===
-            try:
-                model            = await huawei_client.get_inverter_model_name()
-                serial           = await huawei_client.get_inverter_serial_number()
-                fw               = await huawei_client.get_inverter_software_version()
-                device_type      = await huawei_client.get(rn.DEVICE_TYPE, slave_id)
-                rated_power      = await huawei_client.get(rn.INVERTER_RATED_POWER, slave_id)
-                nb_optimizers    = await huawei_client.get(rn.NUMBER_OF_OPTIMIZERS, slave_id)
-                country_code     = await huawei_client.get(rn.COUNTRY_CODE, slave_id)
-                manufacture_date = await huawei_client.get(rn.MANUFACTURE_DATE, slave_id)
-                vendor_name      = await huawei_client.get(rn.VENDOR_NAME, slave_id)
-
-                log.info("🔌 Huawei inverter information:")
-                log.info("   ▪ Model: %s", model.value)
-                log.info("   ▪ Serial number: %s", serial.value)
-                log.info("   ▪ Firmware version: %s", fw.value)
-                log.info("   ▪ Device type: %s", device_type.value)
-                log.info("   ▪ Rated power: %s W", rated_power.value)
-                log.info("   ▪ Number of optimizers: %s", nb_optimizers.value)
-                log.info("   ▪ Country code: %s", country_code.value)
-                log.info("   ▪ Manufacture date: %s", manufacture_date.value)
-                log.info("   ▪ Vendor: %s", vendor_name.value)
-
-                mqtt_client_local = globals().get("last_mqtt_client")
-                if mqtt_client_local:
-                    mqtt_client_local.publish("inverter/Huawei/info/model", str(model.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/serial", str(serial.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/firmware", str(fw.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/device_type", str(device_type.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/rated_power_W", str(rated_power.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/optimizers_count", str(nb_optimizers.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/country_code", str(country_code.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/manufacture_date", str(manufacture_date.value), qos=1, retain=True)
-                    mqtt_client_local.publish("inverter/Huawei/info/vendor", str(vendor_name.value), qos=1, retain=True)
-
-                    info_dict = {
-                        "model": model.value,
-                        "serial": serial.value,
-                        "firmware": fw.value,
-                        "device_type": device_type.value,
-                        "rated_power_W": rated_power.value,
-                        "optimizers_count": nb_optimizers.value,
-                        "country_code": country_code.value,
-                        "manufacture_date": manufacture_date.value,
-                        "vendor": vendor_name.value,
-                    }
-                    mqtt_client_local.publish(
-                        "inverter/Huawei/info/json",
-                        json.dumps(info_dict, ensure_ascii=False),
-                        qos=1,
-                        retain=True,
-                    )
-            except Exception as e:
-                log.warning("⚠️ Could not read inverter info: %s", e)
-
             return huawei_client
-
         except Exception as e:
             log.error("❌ Huawei connect error: %s; retrying in %ss", e, backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60)
-
     raise asyncio.CancelledError()
 
-# --- Bucle principal de publicación ---
+# --- Lectura con reintentos ---
+async def safe_get(huawei_client, key, retries=3, delay=1.0):
+    for attempt in range(1, retries + 1):
+        try:
+            return await huawei_client.get(key, slave_id)
+        except Exception as e:
+            log.warning("Lectura fallida (%s) intento %d/%d: %s", key, attempt, retries, e)
+            if attempt < retries:
+                await asyncio.sleep(delay)
+    raise RuntimeError(f"Fallo permanente leyendo {key}")
+
+# --- Bucle principal ---
 async def _modbus_loop(huawei_client, mqtt_client):
     periodic_ctr = 0
+    fail_count = 0
+
     while not shutdown_event.is_set():
         if hasattr(mqtt_client, "is_connected") and not mqtt_client.is_connected():
             log.warning("MQTT not connected, waiting...")
             await asyncio.sleep(1)
             continue
 
+        # 📈 Lecturas inmediatas (cada ciclo)
+        for key in VARS_IMMEDIATE:
+            try:
+                mid = await safe_get(huawei_client, key)
+                mqtt_client.publish(f"inverter/Huawei/{key}", str(mid.value), qos=pub_qos)
+                fail_count = 0
+            except Exception as e:
+                log.error("Error leyendo %s: %s", key, e)
+                fail_count += 1
+
+        # 🕐 Lecturas periódicas (cada 5 ciclos)
         periodic_ctr += 1
-        if periodic_ctr > 5:
+        if periodic_ctr >= 5:
             for key in VARS_PERIODIC:
                 try:
-                    mid = await huawei_client.get(key, slave_id)
+                    mid = await safe_get(huawei_client, key)
                     mqtt_client.publish(f"inverter/Huawei/{key}", str(mid.value), qos=pub_qos)
+                    fail_count = 0
                 except Exception as e:
-                    log.error("Error reading %s: %s", key, e)
+                    log.error("Error leyendo %s: %s", key, e)
+                    fail_count += 1
             periodic_ctr = 0
+
+        if fail_count >= 10:
+            log.warning("Demasiados fallos consecutivos; reiniciando conexión.")
+            raise asyncio.CancelledError()
 
         await asyncio.sleep(1)
 
-# --- Ciclo completo ---
+# --- Ejecución completa ---
 async def _run_once():
     mqtt_client = await _connect_mqtt_with_retries()
     huawei_client = await _connect_huawei_with_retries()
@@ -401,8 +341,8 @@ async def _run_once():
 async def main():
     loop = asyncio.get_running_loop()
     try:
-        loop.add_signal_handler(signal.SIGINT, _signal_handler)
-        loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+        loop.add_signal_handler(signal.SIGINT, lambda: shutdown_event.set())
+        loop.add_signal_handler(signal.SIGTERM, lambda: shutdown_event.set())
     except NotImplementedError:
         pass
 
