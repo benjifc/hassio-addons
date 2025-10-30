@@ -5,7 +5,6 @@ import sys
 import signal
 import logging
 import ssl
-import json
 from typing import Optional
 
 from huawei_solar import AsyncHuaweiSolar, register_names as rn
@@ -73,6 +72,55 @@ log.info(
     mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive
 )
 
+# --- Variables a leer ---
+
+VARS_IMMEDIATE = [
+    # PV strings
+    rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
+    rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
+    rn.INPUT_POWER,  # Potencia total desde los paneles solares
+
+    # Red y potencia
+    rn.GRID_VOLTAGE, rn.GRID_CURRENT,
+    rn.ACTIVE_POWER, rn.REACTIVE_POWER,
+    rn.POWER_FACTOR, rn.GRID_FREQUENCY,
+
+    # Si hay contador SDongle o DDSU666-H
+    rn.POWER_METER_ACTIVE_POWER,
+    rn.POWER_METER_REACTIVE_POWER,
+
+
+]
+
+
+VARS_PERIODIC = [
+    # Estado general y diagnósticos
+    rn.DEVICE_STATUS,
+    rn.FAULT_CODE,
+    rn.INTERNAL_TEMPERATURE,
+    rn.EFFICIENCY,
+    rn.DAY_ACTIVE_POWER_PEAK,
+    rn.INSULATION_RESISTANCE,
+
+    # Energía diaria y total
+    rn.DAILY_YIELD_ENERGY,
+    rn.ACCUMULATED_YIELD_ENERGY,
+    rn.GRID_EXPORTED_ENERGY,
+    rn.GRID_ACCUMULATED_ENERGY,
+
+    # Totales de generación y exportación
+    rn.TOTAL_FEED_IN_TO_GRID,
+    rn.TOTAL_SUPPLY_FROM_GRID,
+
+    # Producción acumulada y actual
+    rn.PV_YIELD_TODAY,
+    rn.INVERTER_ENERGY_YIELD_TODAY,
+    rn.INVERTER_TOTAL_ENERGY_YIELD,
+
+    # Energía mensual y anual
+    rn.MONTHLY_YIELD_ENERGY,
+    rn.YEARLY_YIELD_ENERGY,
+]
 # --- Señales ---
 shutdown_event = asyncio.Event()
 
@@ -177,67 +225,55 @@ async def _connect_mqtt_with_retries():
     client.loop_stop()
     raise asyncio.CancelledError()
 
-# --- Helpers: leer info y escanear registros soportados ---
-async def _read_inverter_info(client, slave_id: int) -> dict:
-    info = {}
-    probes = [
-        ("model", getattr(rn, "MODEL_NAME", None)),
-        ("device_type", getattr(rn, "DEVICE_TYPE", None)),
-        ("serial", getattr(rn, "SERIAL_NUMBER", None)),
-        ("software_version", getattr(rn, "SOFTWARE_VERSION", None)),
-        ("firmware_version", getattr(rn, "FIRMWARE_VERSION", None)),
-    ]
-    for key, reg in probes:
-        if not reg:
-            continue
-        try:
-            res = await client.get(reg, slave_id)
-            info[key] = str(res.value)
-        except Exception:
-            pass
-    return info
-
-async def _scan_supported_registers(client, slave_id: int) -> list:
-    """
-    Escanea todos los registros de huawei_solar.register_names y devuelve los que responden.
-    """
-    supported = []
-    all_regs = [getattr(rn, r) for r in dir(rn) if r.isupper()]
-    log.info("Scanning %d possible registers...", len(all_regs))
-
-    for reg in all_regs:
-        try:
-            await client.get(reg, slave_id)
-            supported.append(reg)
-        except Exception as e:
-            if "exception_code=2" in str(e):
-                continue  # no soportado
-    log.info("Found %d supported registers", len(supported))
-    return supported
-
 # --- Conexión al inverter Huawei ---
-async def _connect_huawei_with_retries(mqtt_client):
+async def _connect_huawei_with_retries():
     backoff = 1
     while not shutdown_event.is_set():
         try:
             log.info("Connecting to Huawei inverter %s:%d (slave_id=%d)", inverter_ip, port, slave_id)
             huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id)
             log.info("Huawei inverter connected")
+        # === 🔍 Obtener y mostrar información del inversor ===
+        try:
+            model = await huawei_client.get_inverter_model_name()
+            serial = await huawei_client.get_inverter_serial_number()
+            fw = await huawei_client.get_inverter_software_version()
+            device_type = await huawei_client.get(rn.DEVICE_TYPE, slave_id)
+            rated_power = await huawei_client.get(rn.INVERTER_RATED_POWER, slave_id)
+            nb_optimizers = await huawei_client.get(rn.NUMBER_OF_OPTIMIZERS, slave_id)
+            country_code = await huawei_client.get(rn.COUNTRY_CODE, slave_id)
+            manufacture_date = await huawei_client.get(rn.MANUFACTURE_DATE, slave_id)
+            vendor_name = await huawei_client.get(rn.VENDOR_NAME, slave_id)
 
-            info = await _read_inverter_info(huawei_client, slave_id)
-            if info:
-                log.info("🔌 Inverter info: %s", info)
-                for k, v in info.items():
-                    mqtt_client.publish(f"inverter/Huawei/info/{k}", v, qos=1, retain=True)
-                mqtt_client.publish("inverter/Huawei/info/json", json.dumps(info), qos=1, retain=True)
+            log.info("🔌 Huawei inverter information:")
+            log.info("   ▪ Model: %s", model.value)
+            log.info("   ▪ Serial number: %s", serial.value)
+            log.info("   ▪ Firmware version: %s", fw.value)
+            log.info("   ▪ Device type: %s", device_type.value)
+            log.info("   ▪ Rated power: %s W", rated_power.value)
+            log.info("   ▪ Number of optimizers: %s", nb_optimizers.value)
+            log.info("   ▪ Country code: %s", country_code.value)
+            log.info("   ▪ Manufacture date: %s", manufacture_date.value)
+            log.info("   ▪ Vendor: %s", vendor_name.value)
 
-            # --- Auto-scan de registros disponibles ---
-            supported = await _scan_supported_registers(huawei_client, slave_id)
-            mqtt_client.publish("inverter/Huawei/info/supported_count", str(len(supported)), qos=1, retain=True)
-            mqtt_client.publish("inverter/Huawei/info/supported_json", json.dumps(supported), qos=1, retain=True)
-            log.info("Auto-generated register list with %d supported items", len(supported))
+            # Publicar toda la información en MQTT
+            mqtt_client_local = globals().get("last_mqtt_client")
+            if mqtt_client_local:
+                mqtt_client_local.publish("inverter/Huawei/info/model", str(model.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/serial", str(serial.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/firmware", str(fw.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/device_type", str(device_type.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/rated_power_W", str(rated_power.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/optimizers_count", str(nb_optimizers.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/country_code", str(country_code.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/manufacture_date", str(manufacture_date.value), qos=1, retain=True)
+                mqtt_client_local.publish("inverter/Huawei/info/vendor", str(vendor_name.value), qos=1, retain=True)
 
-            return huawei_client, supported
+        except Exception as e:
+            log.warning("Could not read inverter info: %s", e)
+        # === ============================== ===
+
+            return huawei_client
 
         except Exception as e:
             log.error("Huawei connect error: %s; retrying in %ss", e, backoff)
@@ -246,23 +282,60 @@ async def _connect_huawei_with_retries(mqtt_client):
 
     raise asyncio.CancelledError()
 
-# --- Bucle principal ---
-async def _modbus_loop(huawei_client, mqtt_client, supported_regs):
-    while not shutdown_event.is_set():
-        for reg in supported_regs:
-            try:
-                val = await huawei_client.get(reg, slave_id)
-                mqtt_client.publish(f"inverter/Huawei/{reg}", str(val.value), qos=pub_qos)
-            except Exception:
-                pass
-        await asyncio.sleep(2)
+# --- Bucle principal de publicación ---
+async def _modbus_loop(huawei_client, mqtt_client):
+    periodic_ctr = 0
+    energia_importada = 0.0
+    energia_exportada = 0.0
 
+    while not shutdown_event.is_set():
+        if hasattr(mqtt_client, "is_connected") and not mqtt_client.is_connected():
+            log.warning("MQTT not connected, waiting...")
+            await asyncio.sleep(1)
+            continue
+
+    #     try:
+    #    # === BASE READINGS ===
+    #         active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000  # kW
+    #         meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1) / 1000  # kW (+import / -export)
+
+    #         # === DERIVED SENSORS ===
+    #         mqtt_client.publish(f"inverter/Huawei/active_power", f"{active_power:.3f}", qos=pub_qos)
+    #         mqtt_client.publish(f"inverter/Huawei/meter_power_active_power", f"{meter_power:.3f}", qos=pub_qos)
+
+
+    #         # House instantaneous consumption (kW)
+    #         house_consumption = abs(active_power - meter_power)
+
+    #         # Import / Export (kW)
+    #         grid_import = max(meter_power, 0)
+    #         grid_export = max(-meter_power, 0)
+
+    #         # Publish all derived sensors with 3 decimals
+    #         mqtt_client.publish("inverter/Huawei/house_consumption", f"{house_consumption:.3f}", qos=pub_qos)
+    #         mqtt_client.publish("inverter/Huawei/grid_import", f"{grid_import:.3f}", qos=pub_qos)
+    #         mqtt_client.publish("inverter/Huawei/grid_export", f"{grid_export:.3f}", qos=pub_qos)
+    #     except Exception as e:
+    #         log.error("Error en cálculo derivado: %s", e)
+
+        # LECTURAS PERIÓDICAS ORIGINALES
+        periodic_ctr += 1
+        if periodic_ctr > 5:
+            for key in VARS_PERIODIC:
+                try:
+                    mid = await huawei_client.get(key, slave_id)
+                    mqtt_client.publish(f"inverter/Huawei/{key}", str(mid.value), qos=pub_qos)
+                except Exception as e:
+                    log.error("Error reading %s: %s", key, e)
+            periodic_ctr = 0
+
+        await asyncio.sleep(1)
 # --- Ciclo completo ---
 async def _run_once():
     mqtt_client = await _connect_mqtt_with_retries()
-    huawei_client, supported = await _connect_huawei_with_retries(mqtt_client)
+    huawei_client = await _connect_huawei_with_retries()
     try:
-        await _modbus_loop(huawei_client, mqtt_client, supported)
+        await _modbus_loop(huawei_client, mqtt_client)
     finally:
         log.info("Publishing offline and shutting down...")
         try:
