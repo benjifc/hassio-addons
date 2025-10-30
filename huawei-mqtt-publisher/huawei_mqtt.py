@@ -11,15 +11,6 @@ from typing import Optional
 from huawei_solar import AsyncHuaweiSolar, register_names as rn
 import paho.mqtt.client as mqtt
 
-# --- Logging docker-friendly ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)-15s %(threadName)-15s %(levelname)-8s %(module)-15s:%(lineno)-8s %(message)s",
-    stream=sys.stdout,
-)
-log = logging.getLogger(__name__)
-logging.getLogger("huawei_solar").setLevel(logging.WARNING)
-
 # ---------- Utilidades de entorno ----------
 def _clean(s: Optional[str]) -> Optional[str]:
     if s is None:
@@ -38,7 +29,7 @@ def env_int(name: str, default: int) -> int:
     try:
         return int(_clean(val))
     except Exception:
-        log.warning("Env %s tenía valor no entero %r, uso %s", name, val, default)
+        logging.getLogger(__name__).warning("Env %s tenía valor no entero %r, uso %s", name, val, default)
         return int(default)
 
 def env_bool(name: str, default: bool) -> bool:
@@ -51,6 +42,29 @@ def env_bool(name: str, default: bool) -> bool:
     if v in ("0", "false", "no", "off"):
         return False
     return default
+
+def _parse_log_level(s: str, default=logging.INFO) -> int:
+    if not s:
+        return default
+    s = str(s).strip().upper()
+    if s.isdigit():
+        try:
+            return int(s)
+        except Exception:
+            return default
+    return getattr(logging, s, default)
+
+# --- Log level desde ENV antes de configurar logging ---
+LOG_LEVEL = _parse_log_level(env_str("LOG_LEVEL", "INFO"))
+
+# --- Logging docker-friendly ---
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)-15s %(threadName)-15s %(levelname)-8s %(module)-15s:%(lineno)-8s %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger(__name__)
+logging.getLogger("huawei_solar").setLevel(logging.WARNING)
 
 # --- Lectura de entorno exportado por run ---
 inverter_ip     = env_str("INVERTER_IP", "192.168.1.102")
@@ -66,74 +80,55 @@ mqtt_protocol_s = env_str("MQTT_PROTOCOL", "v5")
 mqtt_tls        = env_bool("MQTT_TLS", False)
 mqtt_keepalive  = env_int("MQTT_KEEPALIVE", 60)
 
-# --- Configuración efectiva (sin password) ---
 log.info(
-    "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s qos=%s client_id=%s proto=%s tls=%s keepalive=%s",
+    "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s qos=%s client_id=%s proto=%s tls=%s keepalive=%s | log_level=%s",
     inverter_ip, port, slave_id, mqtt_host, broker_port, mqtt_user, pub_qos,
-    mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive
+    mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive, LOG_LEVEL
 )
 
 # ======== Defaults SUN2000 (se pueden sobrescribir por ENV) ========
-
 DEFAULT_VARS_IMMEDIATE = [
-    # PV strings
-    rn.PV_01_VOLTAGE,
-    rn.PV_01_CURRENT,
-    rn.PV_02_VOLTAGE,
-    rn.PV_02_CURRENT,
-    rn.INPUT_POWER,       # Total desde FV (W)
-    # Potencias / red
-    rn.ACTIVE_POWER,      # W (positivo exporta a red)
-    rn.REACTIVE_POWER,    # var
+    rn.PV_01_VOLTAGE, rn.PV_01_CURRENT,
+    rn.PV_02_VOLTAGE, rn.PV_02_CURRENT,
+    rn.INPUT_POWER,            # W total FV
+    rn.ACTIVE_POWER,           # W (positivo exporta)
+    rn.REACTIVE_POWER,         # var
     rn.POWER_FACTOR,
-    rn.GRID_VOLTAGE,      # V
-    rn.GRID_CURRENT,      # A
-    rn.GRID_FREQUENCY,    # Hz
-    # Contador (si hay)
+    rn.GRID_VOLTAGE,           # V
+    rn.GRID_CURRENT,           # A
+    rn.GRID_FREQUENCY,         # Hz
     rn.POWER_METER_ACTIVE_POWER,
     rn.POWER_METER_REACTIVE_POWER,
 ]
 
 DEFAULT_VARS_PERIODIC = [
-    # Diagnóstico / estado
     rn.DEVICE_STATUS,
     rn.FAULT_CODE,
     rn.INTERNAL_TEMPERATURE,
     rn.INSULATION_RESISTANCE,
-    # Rendimiento
     rn.EFFICIENCY,
     rn.DAY_ACTIVE_POWER_PEAK,
-    # Energías
     rn.DAILY_YIELD_ENERGY,
     rn.ACCUMULATED_YIELD_ENERGY,
     rn.PV_YIELD_TODAY,
     rn.INVERTER_ENERGY_YIELD_TODAY,
-    rn.INVERTER_TOTAL_ENERGY_YIELD,  # <- nombre correcto en la librería
+    rn.INVERTER_TOTAL_ENERGY_YIELD,
     rn.MONTHLY_YIELD_ENERGY,
     rn.YEARLY_YIELD_ENERGY,
-    # Exportación / importación
     rn.GRID_EXPORTED_ENERGY,
     rn.GRID_ACCUMULATED_ENERGY,
     rn.TOTAL_FEED_IN_TO_GRID,
     rn.TOTAL_SUPPLY_FROM_GRID,
 ]
 
-_unknown_regs = {}   # Se rellena si hay nombres desconocidos en ENV
-last_mqtt_client = None  # Se establece al conectar MQTT
-
+_unknown_regs = {}   # se rellena si hay nombres desconocidos en ENV
+last_mqtt_client = None  # se establece al conectar MQTT
 
 def _map_env_registers(env_name: str, default_list):
-    """
-    Lee una lista JSON desde la variable de entorno 'env_name' con nombres
-    como 'PV_01_VOLTAGE' y los mapea a rn.PV_01_VOLTAGE, etc.
-    Devuelve la lista resultante o 'default_list' si el ENV no existe o es inválido.
-    También acumula los nombres desconocidos en _unknown_regs.
-    """
     raw = os.getenv(env_name, "").strip()
     if not raw:
         log.info("%s no definido; usando defaults (%d regs)", env_name, len(default_list))
         return default_list
-
     try:
         items = json.loads(raw)
         if not isinstance(items, list):
@@ -160,14 +155,12 @@ def _map_env_registers(env_name: str, default_list):
     log.info("%s resuelto a %d registros", env_name, len(resolved))
     return resolved if resolved else default_list
 
-
 # --- Variables a leer (sobrescribibles por ENV) ---
 VARS_IMMEDIATE = _map_env_registers("VARS_IMMEDIATE", DEFAULT_VARS_IMMEDIATE)
 VARS_PERIODIC  = _map_env_registers("VARS_PERIODIC",  DEFAULT_VARS_PERIODIC)
 
 # --- Señales ---
 shutdown_event = asyncio.Event()
-
 def _signal_handler():
     log.info("Received shutdown signal")
     shutdown_event.set()
@@ -199,19 +192,26 @@ def _set_mqtt_callbacks(client):
     client.connected_flag = False
 
     if USE_V2:
+        # v2: on_connect(client, userdata, flags, reasonCode, properties)
         def on_connect(client, userdata, flags, reasonCode, properties):
             rc = getattr(reasonCode, "value", reasonCode)
             if rc == 0:
                 client.connected_flag = True
                 log.info("MQTT connected OK (v2), rc=%s", rc)
             else:
-                log.warning("MQTT connect failed (v2), rc=%s", rc)
+                if rc == 135:
+                    log.error("MQTT connect failed (v2) rc=135 Not authorized. Revisa usuario/clave/ACL del broker.")
+                else:
+                    log.warning("MQTT connect failed (v2), rc=%s", rc)
 
-        def on_disconnect(client, userdata, reasonCode, properties):
+        # algunos builds pasan 5 args a on_disconnect
+        # on_disconnect(client, userdata, flags, reasonCode, properties)
+        def on_disconnect(client, userdata, flags, reasonCode, properties=None):
             rc = getattr(reasonCode, "value", reasonCode)
             client.connected_flag = False
             log.warning("MQTT disconnected (v2), rc=%s", rc)
     else:
+        # v1: on_connect(client, userdata, flags, rc)
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 client.connected_flag = True
@@ -219,6 +219,7 @@ def _set_mqtt_callbacks(client):
             else:
                 log.warning("MQTT connect failed (v1), rc=%s", rc)
 
+        # v1: on_disconnect(client, userdata, rc)
         def on_disconnect(client, userdata, rc):
             client.connected_flag = False
             log.warning("MQTT disconnected (v1), rc=%s", rc)
@@ -292,7 +293,7 @@ async def _connect_huawei_with_retries():
             huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id)
             log.info("✅ Huawei inverter connected successfully")
 
-            # === 🔍 Obtener y mostrar información del inversor ===
+            # === 🔍 Obtener y publicar información del inversor ===
             try:
                 model            = await huawei_client.get_inverter_model_name()
                 serial           = await huawei_client.get_inverter_serial_number()
@@ -315,7 +316,6 @@ async def _connect_huawei_with_retries():
                 log.info("   ▪ Manufacture date: %s", manufacture_date.value)
                 log.info("   ▪ Vendor: %s", vendor_name.value)
 
-                # Publicar toda la información en MQTT
                 mqtt_client_local = globals().get("last_mqtt_client")
                 if mqtt_client_local:
                     mqtt_client_local.publish("inverter/Huawei/info/model", str(model.value), qos=1, retain=True)
@@ -345,7 +345,6 @@ async def _connect_huawei_with_retries():
                         qos=1,
                         retain=True,
                     )
-
             except Exception as e:
                 log.warning("⚠️ Could not read inverter info: %s", e)
 
@@ -361,27 +360,12 @@ async def _connect_huawei_with_retries():
 # --- Bucle principal de publicación ---
 async def _modbus_loop(huawei_client, mqtt_client):
     periodic_ctr = 0
-
     while not shutdown_event.is_set():
         if hasattr(mqtt_client, "is_connected") and not mqtt_client.is_connected():
             log.warning("MQTT not connected, waiting...")
             await asyncio.sleep(1)
             continue
 
-        # Ejemplo: aquí podrías publicar derivados si quieres (comentado en tu versión)
-        # try:
-        #     active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000.0
-        #     meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1) / 1000.0
-        #     house_consumption = abs(active_power - meter_power)
-        #     grid_import = max(meter_power, 0)
-        #     grid_export = max(-meter_power, 0)
-        #     mqtt_client.publish("inverter/Huawei/house_consumption", f"{house_consumption:.3f}", qos=pub_qos)
-        #     mqtt_client.publish("inverter/Huawei/grid_import", f"{grid_import:.3f}", qos=pub_qos)
-        #     mqtt_client.publish("inverter/Huawei/grid_export", f"{grid_export:.3f}", qos=pub_qos)
-        # except Exception as e:
-        #     log.error("Error en cálculo derivado: %s", e)
-
-        # Lecturas periódicas
         periodic_ctr += 1
         if periodic_ctr > 5:
             for key in VARS_PERIODIC:

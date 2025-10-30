@@ -29,10 +29,12 @@ export MQTT_CLIENT_ID="$(val mqtt_client_id)"
 PROTO="$(val mqtt_protocol)"
 TLS="$(val mqtt_tls)"
 KEEPALIVE="$(val mqtt_keepalive)"
+LOG_LEVEL="$(val log_level)"
 
 [ -n "${PROTO:-}" ] && export MQTT_PROTOCOL="$PROTO"
 [ -n "${TLS:-}" ] && export MQTT_TLS="$TLS"
 [ -n "${KEEPALIVE:-}" ] && export MQTT_KEEPALIVE="$KEEPALIVE"
+[ -n "${LOG_LEVEL:-}" ] && export LOG_LEVEL="$LOG_LEVEL"
 
 # --- Listas de registros -------------------------------------
 VARS_IMMEDIATE_JSON="$(val_array_json vars_immediate)"
@@ -49,6 +51,7 @@ fi
 # --- Log de arranque -----------------------------------------
 echo "[INFO] Starting Huawei Inverter MQTT Publisher..."
 echo "[INFO] Inverter: ${INVERTER_IP} | MQTT: ${MQTT_HOST}:${MQTT_PORT} (client ${MQTT_CLIENT_ID})"
+echo "[INFO] Log level: ${LOG_LEVEL:-INFO}"
 
 if [ -n "${VARS_IMMEDIATE_JSON:-}" ]; then
   COUNT_IMM="$(echo "$VARS_IMMEDIATE_JSON" | jq 'length')"
