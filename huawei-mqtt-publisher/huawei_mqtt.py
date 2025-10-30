@@ -252,29 +252,29 @@ async def _modbus_loop(huawei_client, mqtt_client):
             await asyncio.sleep(1)
             continue
 
-        try:
-       # === BASE READINGS ===
-            active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000  # kW
-            meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1) / 1000  # kW (+import / -export)
+    #     try:
+    #    # === BASE READINGS ===
+    #         active_power = ((await huawei_client.get(rn.ACTIVE_POWER, slave_id)).value) / 1000  # kW
+    #         meter_power  = ((await huawei_client.get(rn.POWER_METER_ACTIVE_POWER, slave_id)).value * -1) / 1000  # kW (+import / -export)
 
-            # === DERIVED SENSORS ===
-            mqtt_client.publish(f"inverter/Huawei/active_power", f"{active_power:.3f}", qos=pub_qos)
-            mqtt_client.publish(f"inverter/Huawei/meter_power_active_power", f"{meter_power:.3f}", qos=pub_qos)
+    #         # === DERIVED SENSORS ===
+    #         mqtt_client.publish(f"inverter/Huawei/active_power", f"{active_power:.3f}", qos=pub_qos)
+    #         mqtt_client.publish(f"inverter/Huawei/meter_power_active_power", f"{meter_power:.3f}", qos=pub_qos)
 
 
-            # House instantaneous consumption (kW)
-            house_consumption = abs(active_power - meter_power)
+    #         # House instantaneous consumption (kW)
+    #         house_consumption = abs(active_power - meter_power)
 
-            # Import / Export (kW)
-            grid_import = max(meter_power, 0)
-            grid_export = max(-meter_power, 0)
+    #         # Import / Export (kW)
+    #         grid_import = max(meter_power, 0)
+    #         grid_export = max(-meter_power, 0)
 
-            # Publish all derived sensors with 3 decimals
-            mqtt_client.publish("inverter/Huawei/house_consumption", f"{house_consumption:.3f}", qos=pub_qos)
-            mqtt_client.publish("inverter/Huawei/grid_import", f"{grid_import:.3f}", qos=pub_qos)
-            mqtt_client.publish("inverter/Huawei/grid_export", f"{grid_export:.3f}", qos=pub_qos)
-        except Exception as e:
-            log.error("Error en cálculo derivado: %s", e)
+    #         # Publish all derived sensors with 3 decimals
+    #         mqtt_client.publish("inverter/Huawei/house_consumption", f"{house_consumption:.3f}", qos=pub_qos)
+    #         mqtt_client.publish("inverter/Huawei/grid_import", f"{grid_import:.3f}", qos=pub_qos)
+    #         mqtt_client.publish("inverter/Huawei/grid_export", f"{grid_export:.3f}", qos=pub_qos)
+    #     except Exception as e:
+    #         log.error("Error en cálculo derivado: %s", e)
 
         # LECTURAS PERIÓDICAS ORIGINALES
         periodic_ctr += 1
