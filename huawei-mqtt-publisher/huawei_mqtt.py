@@ -27,10 +27,20 @@ def env_int(name: str, default: int) -> int:
     if val is None or _clean(val) == "":
         return int(default)
     try:
-        return int(_clean(val))
+        return int(float(_clean(val)))
     except Exception:
         logging.getLogger(__name__).warning("Env %s tenía valor no entero %r, uso %s", name, val, default)
         return int(default)
+
+def env_float(name: str, default: float) -> float:
+    val = os.getenv(name)
+    if val is None or _clean(val) == "":
+        return float(default)
+    try:
+        return float(_clean(val))
+    except Exception:
+        logging.getLogger(__name__).warning("Env %s tenía valor no float %r, uso %s", name, val, default)
+        return float(default)
 
 def env_bool(name: str, default: bool) -> bool:
     val = os.getenv(name)
@@ -80,10 +90,15 @@ mqtt_protocol_s = env_str("MQTT_PROTOCOL", "v5")
 mqtt_tls        = env_bool("MQTT_TLS", False)
 mqtt_keepalive  = env_int("MQTT_KEEPALIVE", 60)
 
+# Nuevos ENV de ritmo de lectura
+READ_INTERVAL   = env_float("READ_INTERVAL", 2.0)   # descanso al final de cada ciclo
+PER_READ_DELAY  = env_float("PER_READ_DELAY", 0.3)  # pausa entre peticiones Modbus
+
 log.info(
-    "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s qos=%s client_id=%s proto=%s tls=%s keepalive=%s | log_level=%s",
+    "Config: inverter_ip=%s modbus_port=%s slave_id=%s | mqtt: host=%s port=%s user=%s qos=%s client_id=%s proto=%s tls=%s keepalive=%s | log_level=%s | read_interval=%.3f | per_read_delay=%.3f",
     inverter_ip, port, slave_id, mqtt_host, broker_port, mqtt_user, pub_qos,
-    mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive, LOG_LEVEL
+    mqtt_client_id, mqtt_protocol_s, mqtt_tls, mqtt_keepalive, LOG_LEVEL,
+    READ_INTERVAL, PER_READ_DELAY
 )
 
 # ======== Defaults SUN2000 ========
@@ -175,6 +190,7 @@ def _mk_client():
 def _set_mqtt_callbacks(client):
     client.connected_flag = False
     if USE_V2:
+        # v2: on_connect(client, userdata, flags, reasonCode, properties)
         def on_connect(client, userdata, flags, reasonCode, properties):
             rc = getattr(reasonCode, "value", reasonCode)
             if rc == 0:
@@ -186,6 +202,7 @@ def _set_mqtt_callbacks(client):
                 else:
                     log.warning("MQTT connect failed (v2), rc=%s", rc)
 
+        # aceptar 5 args por compatibilidad
         def on_disconnect(client, userdata, flags, reasonCode, properties=None):
             rc = getattr(reasonCode, "value", reasonCode)
             client.connected_flag = False
@@ -258,7 +275,16 @@ async def _connect_huawei_with_retries():
     while not shutdown_event.is_set():
         try:
             log.info("Connecting to Huawei inverter %s:%d (slave_id=%d)", inverter_ip, port, slave_id)
-            huawei_client = await AsyncHuaweiSolar.create(inverter_ip, port, slave_id)
+            try:
+                # intento con max_reg_reads=1 para evitar agrupaciones pesadas
+                huawei_client = await AsyncHuaweiSolar.create(
+                    inverter_ip, port, slave_id, max_reg_reads=1
+                )
+            except TypeError:
+                # fallback si la versión de la librería no soporta el kwarg
+                huawei_client = await AsyncHuaweiSolar.create(
+                    inverter_ip, port, slave_id
+                )
             log.info("✅ Huawei inverter connected successfully")
             return huawei_client
         except Exception as e:
@@ -267,7 +293,7 @@ async def _connect_huawei_with_retries():
             backoff = min(backoff * 2, 60)
     raise asyncio.CancelledError()
 
-# --- Lectura con reintentos ---
+# --- Lectura con reintentos (con pequeño backoff) ---
 async def safe_get(huawei_client, key, retries=3, delay=1.0):
     for attempt in range(1, retries + 1):
         try:
@@ -275,7 +301,7 @@ async def safe_get(huawei_client, key, retries=3, delay=1.0):
         except Exception as e:
             log.warning("Lectura fallida (%s) intento %d/%d: %s", key, attempt, retries, e)
             if attempt < retries:
-                await asyncio.sleep(delay)
+                await asyncio.sleep(delay * attempt)  # backoff lineal
     raise RuntimeError(f"Fallo permanente leyendo {key}")
 
 # --- Bucle principal ---
@@ -298,6 +324,7 @@ async def _modbus_loop(huawei_client, mqtt_client):
             except Exception as e:
                 log.error("Error leyendo %s: %s", key, e)
                 fail_count += 1
+            await asyncio.sleep(PER_READ_DELAY)
 
         # 🕐 Lecturas periódicas (cada 5 ciclos)
         periodic_ctr += 1
@@ -310,13 +337,14 @@ async def _modbus_loop(huawei_client, mqtt_client):
                 except Exception as e:
                     log.error("Error leyendo %s: %s", key, e)
                     fail_count += 1
+                await asyncio.sleep(PER_READ_DELAY)
             periodic_ctr = 0
 
         if fail_count >= 10:
             log.warning("Demasiados fallos consecutivos; reiniciando conexión.")
             raise asyncio.CancelledError()
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(READ_INTERVAL)
 
 # --- Ejecución completa ---
 async def _run_once():
