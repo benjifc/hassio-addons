@@ -1,6 +1,6 @@
 {
   "name": "Huawei Inverter MQTT Publisher (simple)",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "slug": "huawei_mqtt_publisher_simple",
   "description": "Publica datos del inversor Huawei en MQTT vía Modbus TCP (implementación simple).",
   "url": "https://github.com/benjifc/hassio-addons",
@@ -58,8 +58,8 @@
     "read_interval": "float?",
     "per_read_delay": "float?",
 
-    "vars_immediate": "list(str)?",
-    "vars_periodic": "list(str)?"
+    "vars_immediate": ["str"],
+    "vars_periodic": ["str"]
   },
 
   "map": ["ssl"]
