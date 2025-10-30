@@ -9,6 +9,7 @@
   "boot": "auto",
   "init": false,
   "host_network": false,
+
   "options": {
     "inverter_ip": "192.168.1.102",
     "modbus_slave_id": 1,
@@ -38,6 +39,7 @@
       "TOTAL_FEED_IN_TO_GRID", "TOTAL_SUPPLY_FROM_GRID"
     ]
   },
+
   "schema": {
     "inverter_ip": "str",
     "modbus_slave_id": "int",
@@ -51,8 +53,9 @@
     "mqtt_protocol": "list(311|5)?",
     "mqtt_tls": "bool?",
     "mqtt_keepalive": "int?",
-    "vars_immediate": ["list(str)?", []],
-    "vars_periodic": ["list(str)?", []]
+    "vars_immediate": ["str"],
+    "vars_periodic": ["str"]
   },
+
   "map": ["ssl"]
 }
