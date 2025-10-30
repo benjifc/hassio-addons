@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, time, json, ssl, logging, math
+import os, sys, time, json, ssl, logging, math, socket, errno, fcntl
 from typing import Optional, List, Tuple, Any
 from datetime import datetime
 
@@ -51,7 +51,6 @@ def _parse_log_level(s: str, default=logging.INFO) -> int:
     return getattr(logging, s, default)
 
 LOG_LEVEL = _parse_log_level(env_str("LOG_LEVEL", "INFO"))
-
 logging.basicConfig(
     level=LOG_LEVEL,
     format="%(asctime)-15s %(levelname)-8s %(message)s",
@@ -61,7 +60,7 @@ log = logging.getLogger("huawei_simple")
 
 # --- ENV base ---
 INVERTER_IP     = env_str("INVERTER_IP", "192.168.1.102")
-MODBUS_PORT     = env_int("MODBUS_PORT", 502)
+MODBUS_PORT_RAW = env_str("MODBUS_PORT", "502")  # admite "auto"
 SLAVE_ID        = env_int("MODBUS_SLAVE_ID", 1)
 
 MQTT_HOST       = env_str("MQTT_HOST", "core-mosquitto")
@@ -80,9 +79,11 @@ PERIODIC_EVERY  = env_int("PERIODIC_EVERY", 8)      # cada N ciclos
 
 # Avanzados
 FORCE_SYNC              = env_bool("FORCE_SYNC", False)
-MAX_REG_READS           = env_int("MAX_REG_READS", 1)  # solo aplica a async si soporta el kwarg
+MAX_REG_READS           = env_int("MAX_REG_READS", 1)  # solo async si soporta
 PUBLISH_CHANGED_ONLY    = env_bool("PUBLISH_CHANGED_ONLY", True)
-CHANGE_EPS              = env_float("CHANGE_EPS", 0.001)  # umbral cambio float
+CHANGE_EPS              = env_float("CHANGE_EPS", 0.001)
+LOCK_FILE               = env_str("LOCK_FILE", "/tmp/huawei_modbus.lock")
+COOLDOWN_ON_CONFLICT_S  = env_float("COOLDOWN_ON_CONFLICT_S", 5.0)
 
 # --- Mapear arrays de ENV a objetos rn.X ---
 def map_registers(env_name: str, defaults: List):
@@ -119,6 +120,48 @@ DEFAULT_PER = [
 VARS_IMMEDIATE = map_registers("VARS_IMMEDIATE", DEFAULT_IMM)
 VARS_PERIODIC  = map_registers("VARS_PERIODIC",  DEFAULT_PER)
 
+# ---------- Exclusividad local (lockfile) ----------
+def acquire_lock(path: str):
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(fd, f"{os.getpid()}\n".encode("utf-8"))
+        log.info("🔒 Lock de exclusividad adquirido: %s", path)
+        return fd
+    except BlockingIOError:
+        log.error("🛑 Otro proceso del add-on ya está usando Modbus (lock: %s). Saliendo.", path)
+        sys.exit(1)
+
+LOCK_FD = acquire_lock(LOCK_FILE)
+
+# ---------- Puerto Modbus (auto) ----------
+AUTO_PORTS = [502, 6607]
+def resolve_modbus_port() -> int:
+    if MODBUS_PORT_RAW.lower() == "auto" or MODBUS_PORT_RAW == "0":
+        log.info("🔎 MODBUS_PORT=auto: probando puertos %s ...", AUTO_PORTS)
+        for p in AUTO_PORTS:
+            if tcp_ping(INVERTER_IP, p, 1.5):
+                log.info("✅ Puerto Modbus disponible: %d", p)
+                return p
+        log.warning("⚠️ No se detectó Modbus en %s, usando 502 por defecto", AUTO_PORTS)
+        return 502
+    try:
+        return int(MODBUS_PORT_RAW)
+    except Exception:
+        log.warning("MODBUS_PORT inválido (%s), usando 502", MODBUS_PORT_RAW)
+        return 502
+
+def tcp_ping(host: str, port: int, timeout: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError as e:
+        if e.errno in (errno.ECONNREFUSED, errno.ETIMEDOUT):
+            return False
+        return False
+
+MODBUS_PORT = resolve_modbus_port()
+
 log.info(
     "Config: inverter=%s:%s slave=%s | mqtt=%s:%s client=%s | interval=%.2fs delay=%.2fs | periodic_every=%d | force_sync=%s | max_reg_reads=%d | changed_only=%s eps=%.4f",
     INVERTER_IP, MODBUS_PORT, SLAVE_ID, MQTT_HOST, MQTT_PORT, MQTT_CLIENT_ID,
@@ -132,13 +175,10 @@ def pick_protocol():
     return getattr(mqtt, "MQTTv5", mqtt.MQTTv311)
 
 def make_mqtt():
-    log.debug("Creando cliente MQTT (proto=%s)...", MQTT_PROTOCOL_S)
     client = mqtt.Client(client_id=MQTT_CLIENT_ID, protocol=pick_protocol(), transport="tcp")
     if MQTT_USER:
-        log.debug("Usando credenciales MQTT: %s", MQTT_USER)
         client.username_pw_set(MQTT_USER, MQTT_PASS)
     if MQTT_TLS:
-        log.debug("TLS activado (modo inseguro)")
         client.tls_set(cert_reqs=ssl.CERT_NONE)
         client.tls_insecure_set(True)
     client.will_set("inverter/Huawei/status", "offline", qos=1, retain=True)
@@ -153,7 +193,8 @@ def mqtt_connect_blocking():
             log.info("⏳ Conectando a MQTT %s:%s ...", MQTT_HOST, MQTT_PORT)
             client.connect(MQTT_HOST, MQTT_PORT, keepalive=MQTT_KEEPALIVE)
             time.sleep(1.0)
-            client.publish("inverter/Huawei/status", "online", qos=1, retain=True)
+            client.publish("inverter/Huawei/status", "online ✅", qos=1, retain=True)
+            client.publish("inverter/Huawei/health", json.dumps({"ts": time.time(), "owner": MQTT_CLIENT_ID}), qos=0, retain=False)
             log.info("✅ MQTT conectado correctamente")
             return client
         except Exception as e:
@@ -179,10 +220,8 @@ def _connect_huawei_async() -> Tuple[str, Any]:
     for backoff in (1,2,4,8,16,30):
         try:
             log.info("⏳ Conectando Huawei (async) %s:%s slave=%s ...", INVERTER_IP, MODBUS_PORT, SLAVE_ID)
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
             kwargs = {}
-            # MAX_REG_READS si está soportado por tu versión
             try:
                 if MAX_REG_READS and MAX_REG_READS > 0:
                     kwargs["max_reg_reads"] = MAX_REG_READS
@@ -191,7 +230,6 @@ def _connect_huawei_async() -> Tuple[str, Any]:
             try:
                 cli = loop.run_until_complete(HSClientAsync.create(INVERTER_IP, MODBUS_PORT, SLAVE_ID, **kwargs))
             except TypeError:
-                # versión antigua sin max_reg_reads
                 cli = loop.run_until_complete(HSClientAsync.create(INVERTER_IP, MODBUS_PORT, SLAVE_ID))
             log.info("✅ Huawei conectado (async) ☑️")
             return ("async", (cli, loop))
@@ -226,7 +264,6 @@ def _changed(name: str, new_val: Any) -> bool:
         _last_values[name] = new_val
         return True
     old = _last_values[name]
-    # comparar floats con EPS
     try:
         if isinstance(new_val, (int, float)) and isinstance(old, (int, float)):
             if math.isnan(float(new_val)) and math.isnan(float(old)):
@@ -248,8 +285,19 @@ def _publish(mqttc: mqtt.Client, topic: str, payload: str):
     except Exception as e:
         log.warning("⚠️ Fallo publicando %s: %s", topic, e)
 
-def _safe_read_and_publish(mode, hclient, mqttc, key, prefix="inverter/Huawei/") -> bool:
-    """Devuelve True si leyó y publicó (o decidió no publicar por unchanged); False si falló lectura."""
+# Heurística: detectar conflicto de conexión por mensajes de la librería
+_CONFLICT_PATTERNS = (
+    "request ask for transaction_id",       # id mismatch
+    "Cancel send, because not connected",   # desconexión a mitad
+    "No response received after 3 retries", # timeouts encadenados
+    "ConnectionInterruptedException",
+)
+
+def _safe_read_and_publish(mode, hclient, mqttc, key, prefix="inverter/Huawei/") -> Tuple[bool, bool]:
+    """
+    Devuelve (ok_lectura, sospecha_conflicto)
+    ok_lectura True si leyó (publique o no por unchanged)
+    """
     name = str(key)
     try:
         val = _read_register(mode, hclient, key)
@@ -263,15 +311,17 @@ def _safe_read_and_publish(mode, hclient, mqttc, key, prefix="inverter/Huawei/")
         else:
             _publish(mqttc, topic, str(val))
             log.debug("📤 %s => %s", topic, val)
-        return True
+        return True, False
     except Exception as e:
-        log.warning("🛑 Lectura fallida (%s): %s", name, e)
-        return False
+        msg = str(e)
+        conflict = any(pat in msg for pat in _CONFLICT_PATTERNS)
+        level = logging.WARNING if not conflict else logging.ERROR
+        log.log(level, "🛑 Lectura fallida (%s): %s", name, msg)
+        return False, conflict
 
 def _reconnect_huawei(mode_client: Tuple[str, Any]) -> Tuple[str, Any]:
     log.info("🔄 Reintentando conexión al inversor...")
     try:
-        # intenta cerrar si es async
         mode, cli = mode_client
         if mode != "sync":
             try:
@@ -281,6 +331,8 @@ def _reconnect_huawei(mode_client: Tuple[str, Any]) -> Tuple[str, Any]:
                 pass
     except Exception:
         pass
+    # cooldown pequeño para evitar pelea con otro cliente
+    time.sleep(1.0)
     return make_huawei_client()
 
 def main():
@@ -293,19 +345,24 @@ def main():
     periodic_tick = 0
     read_ok_total = read_fail_total = 0
     consecutive_fail_reads = 0
-    FAIL_RECONNECT_THRESHOLD = 6  # si fallan muchas seguidas, reconecta inversor
+    consecutive_conflicts = 0
+    FAIL_RECONNECT_THRESHOLD = 6
 
     while True:
         cycle_start = time.time()
         ok = fail = 0
+        cycle_conflicts = 0
         log.info("--- Ciclo de lectura iniciado ---")
 
-        # Inmediatos (rápidos)
+        # Inmediatos
         for key in VARS_IMMEDIATE:
-            if _safe_read_and_publish(mode, hclient, mqttc, key):
+            okread, conflict = _safe_read_and_publish(mode, hclient, mqttc, key)
+            if okread:
                 ok += 1; read_ok_total += 1; consecutive_fail_reads = 0
             else:
                 fail += 1; read_fail_total += 1; consecutive_fail_reads += 1
+            if conflict:
+                cycle_conflicts += 1
             time.sleep(PER_READ_DELAY)
 
             if consecutive_fail_reads >= FAIL_RECONNECT_THRESHOLD:
@@ -313,7 +370,6 @@ def main():
                 mode_client = _reconnect_huawei(mode_client)
                 mode, hclient = mode_client
                 consecutive_fail_reads = 0
-                # pequeña pausa tras reconectar
                 time.sleep(0.5)
 
         # Periódicos cada N ciclos
@@ -321,10 +377,13 @@ def main():
         if periodic_tick >= PERIODIC_EVERY:
             log.info("→ Lectura periódica (tick=%s)", periodic_tick)
             for key in VARS_PERIODIC:
-                if _safe_read_and_publish(mode, hclient, mqttc, key):
+                okread, conflict = _safe_read_and_publish(mode, hclient, mqttc, key)
+                if okread:
                     ok += 1; read_ok_total += 1; consecutive_fail_reads = 0
                 else:
                     fail += 1; read_fail_total += 1; consecutive_fail_reads += 1
+                if conflict:
+                    cycle_conflicts += 1
                 time.sleep(PER_READ_DELAY)
 
                 if consecutive_fail_reads >= FAIL_RECONNECT_THRESHOLD:
@@ -336,11 +395,28 @@ def main():
 
             periodic_tick = 0
 
+        # Si vimos conflictos en el ciclo, aplicar cooldown (posible doble cliente)
+        if cycle_conflicts > 0:
+            consecutive_conflicts += cycle_conflicts
+            log.error("🚨 Posible conflicto de conexión Modbus (otro cliente activo). Cooldown %.1fs", COOLDOWN_ON_CONFLICT_S)
+            time.sleep(COOLDOWN_ON_CONFLICT_S)
+        else:
+            consecutive_conflicts = 0
+
         elapsed = time.time() - cycle_start
+        mqttc.publish("inverter/Huawei/health", json.dumps({
+            "ts": time.time(),
+            "owner": MQTT_CLIENT_ID,
+            "ok_total": read_ok_total,
+            "fail_total": read_fail_total,
+            "cycle_ok": ok,
+            "cycle_fail": fail,
+            "conflicts": cycle_conflicts,
+        }), qos=0, retain=False)
+
         log.info("Fin de ciclo (%.2fs). OK=%d, Fail=%d | Totales OK=%d Fail=%d ✅",
                  elapsed, ok, fail, read_ok_total, read_fail_total)
 
-        # descanso entre ciclos
         time.sleep(READ_INTERVAL)
 
 if __name__ == "__main__":
