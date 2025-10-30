@@ -1,6 +1,6 @@
 {
   "name": "Huawei Inverter MQTT Publisher (simple)",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "slug": "huawei_mqtt_publisher_simple",
   "description": "Publica datos del inversor Huawei en MQTT vía Modbus TCP (implementación simple).",
   "url": "https://github.com/benjifc/hassio-addons",
@@ -31,10 +31,19 @@
     "per_read_delay": 0.4,
 
     "vars_immediate": [
-      "INPUT_POWER", "ACTIVE_POWER", "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY"
+      "PV_01_VOLTAGE", "PV_01_CURRENT", "PV_02_VOLTAGE", "PV_02_CURRENT",
+      "INPUT_POWER", "ACTIVE_POWER", "REACTIVE_POWER", "POWER_FACTOR",
+      "GRID_VOLTAGE", "GRID_CURRENT", "GRID_FREQUENCY",
+      "POWER_METER_ACTIVE_POWER", "POWER_METER_REACTIVE_POWER"
     ],
     "vars_periodic": [
-      "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE"
+      "DEVICE_STATUS", "FAULT_CODE", "INTERNAL_TEMPERATURE", "INSULATION_RESISTANCE",
+      "EFFICIENCY", "DAY_ACTIVE_POWER_PEAK",
+      "DAILY_YIELD_ENERGY", "ACCUMULATED_YIELD_ENERGY", "PV_YIELD_TODAY",
+      "INVERTER_ENERGY_YIELD_TODAY", "INVERTER_TOTAL_YIELD",
+      "MONTHLY_YIELD_ENERGY", "YEARLY_YIELD_ENERGY",
+      "GRID_EXPORTED_ENERGY", "GRID_ACCUMULATED_ENERGY",
+      "TOTAL_FEED_IN_TO_GRID", "TOTAL_SUPPLY_FROM_GRID"
     ]
   },
 
